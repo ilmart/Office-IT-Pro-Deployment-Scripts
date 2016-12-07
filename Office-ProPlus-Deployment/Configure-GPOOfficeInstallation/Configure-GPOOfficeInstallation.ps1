@@ -1,112 +1,408 @@
-Add-Type -TypeDefinition @"
-   public enum OfficeVersion
-   {
-      Office2013,
-      Office2016
-   }
-"@
+try {
+$enumDef = "
+using System;
+       [FlagsAttribute]
+       public enum Bitness
+       {
+          Both = 0,
+          v32 = 1,
+          v64 = 2
+       }
+"
+Add-Type -TypeDefinition $enumDef -ErrorAction SilentlyContinue
+} catch { }
 
-Function Download-GPOOfficeInstallation {
+try {
+$enumDef = "
+using System;
+       [FlagsAttribute]
+       public enum OfficeBranch
+       {
+          FirstReleaseCurrent = 0,
+          Current = 1,
+          FirstReleaseBusiness = 2,
+          Business = 3,
+          CMValidation = 4
+       }
+"
+Add-Type -TypeDefinition $enumDef -ErrorAction SilentlyContinue
+} catch { }
 
-    [CmdletBinding(SupportsShouldProcess=$true)]
-    Param(
-	    [Parameter(Mandatory=$True)]
-	    [String]$UncPath,
+try {
+$enumDef = "
+using System;
+       [FlagsAttribute]
+       public enum OfficeChannel
+       {
+          FirstReleaseCurrent = 0,
+          Current = 1,
+          FirstReleaseDeferred = 2,
+          Deferred = 3
+       }
+"
+Add-Type -TypeDefinition $enumDef -ErrorAction SilentlyContinue
+} catch { }
 
-	    [Parameter(Mandatory=$True)]
-	    [OfficeVersion]$OfficeVersion,
-	
-	    [Parameter()]
-	    [String]$Bitness = '32'
-    )
-    Begin
-                {
-	$currentExecutionPolicy = Get-ExecutionPolicy
-	Set-ExecutionPolicy Unrestricted -Scope Process -Force  
-    $startLocation = Get-Location
+function Download-OfficeProPlusChannels{
+<#
+.SYNOPSIS
+Downloads each Office ProPlus Channel with installation files
+.DESCRIPTION
+This script will dynamically downloaded the most current Office ProPlus version for each deployment Channel
+.PARAMETER Version
+The version number you wish to download. For example: 16.0.6228.1010
+.PARAMETER TargetDirectory
+Required. Where all the channels will be downloaded. Each channel then goes into a folder of the same name as the channel.
+.PARAMETER Languages
+Array of Microsoft language codes. Will throw error if provided values don't match the validation set. Defaults to "en-us"
+("en-us","ar-sa","bg-bg","zh-cn","zh-tw","hr-hr","cs-cz","da-dk","nl-nl","et-ee","fi-fi","fr-fr","de-de","el-gr","he-il","hi-in","hu-hu","id-id","it-it",
+"ja-jp","kk-kz","ko-kr","lv-lv","lt-lt","ms-my","nb-no","pl-pl","pt-br","pt-pt","ro-ro","ru-ru","sr-latn-rs","sk-sk","sl-si","es-es","sv-se","th-th",
+"tr-tr","uk-ua")
+.PARAMETER Bitness
+v32, v64, or Both. What bitness of office you wish to download. Defaults to Both.
+.PARAMETER OverWrite
+If this parameter is specified then existing files will be overwritten.
+.PARAMETER Branches
+An array of the Branches you wish to download (This parameter is left for legacy usage)
+.PARAMETER Channels
+An array of the Channels you wish to download. Defaults to all available channels except First Release Current
+.PARAMETER NumVersionsToKeep
+This parameter controls the number of versions to retain. Any older versions will be deleted.
+.PARAMETER UseChannelFolderShortName
+This parameter change the folder name that the scripts creates for each Channel folder. For example if this paramter is set to $true then the Current Channel folder will be named "CC"
+.PARAMETER NumOfRetries
+This parameter Controls the number of times the script will retry if a failure happens
+.PARAMETER IncludeChannelInfo
+This parameter Controls whether the ofl.cab file is downloaded and cached in the root of the TargetDirectory folder
+.Example
+Download-OfficeProPlusChannels -TargetDirectory "\\server\updateshare"
+Default downloads all available channels of the most recent version for both bitnesses into an update source. Downloads the English language pack by default if language is not specified.
+.Link
+https://github.com/OfficeDev/Office-IT-Pro-Deployment-Scripts
+#>
+
+Param(
+    [Parameter()]
+    [string] $Version,
+
+    [Parameter(Mandatory=$true)]
+    [string] $TargetDirectory,
+
+    [Parameter()]
+    [ValidateSet("en-us","ar-sa","bg-bg","zh-cn","zh-tw","hr-hr","cs-cz","da-dk","nl-nl","et-ee","fi-fi","fr-fr","de-de","el-gr","he-il","hi-in","hu-hu","id-id","it-it",
+                "ja-jp","kk-kz","ko-kr","lv-lv","lt-lt","ms-my","nb-no","pl-pl","pt-br","pt-pt","ro-ro","ru-ru","sr-latn-rs","sk-sk","sl-si","es-es","sv-se","th-th",
+                "tr-tr","uk-ua","vi-vn")]
+    [string[]] $Languages = ("en-us"),
+
+    [Parameter()]
+    [Bitness] $Bitness = 0,
+
+    [Parameter()]
+    [int] $NumVersionsToKeep = 2,
+
+    [Parameter()]
+    [bool] $UseChannelFolderShortName = $true,
+
+    [Parameter()]
+    [bool] $OverWrite = $false,
+
+    [Parameter()]
+    [OfficeBranch[]] $Branches,
+
+    [Parameter()]
+    [OfficeChannel[]] $Channels = (0, 1, 2, 3),
+
+    [Parameter()]
+    [int] $NumOfRetries = 5,
+
+    [Parameter()]
+    [bool] $IncludeChannelInfo = $false
+)
+
+$BranchesOrChannels = @()
+
+if($Branches.Count -gt 0)
+{
+    foreach ($branchName in $Branches) {
+      $channelConvertName = ConvertBranchNameToChannelName -BranchName $branchName
+      $BranchesOrChannels += $channelConvertName
     }
-    Process
-    {
-	Write-Host 'Updating Config Files'
-<# write log#>
-    $lineNum = Get-CurrentLineNumber    
-    $filName = Get-CurrentFileName 
-    WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Updating Config Files"
-	
-	if($OfficeVersion -eq "Office2013")
-    {
-        $setupFileName = 'Office2013Setup.exe'
+}
+else{
+    $BranchesOrChannels = $Channels
+}
+      
+$numberOfFiles = (($BranchesOrChannels.Count) * ((($Languages.Count + 1)*3) + 5))
+
+[bool]$downloadSuccess = $TRUE;
+For($i=1; $i -le $NumOfRetries; $i++){#loops through download process in the event of a failure in order to retry
+
+    try{
+        $XMLFilePath = "$env:TEMP/ofl.cab"
+        $XMLDownloadURL = "http://officecdn.microsoft.com/pr/wsus/ofl.cab"
+
+        DownloadFile -url $XMLDownloadURL -targetFile $XMLFilePath
+
+        if ($IncludeChannelInfo) {
+            Copy-Item -Path $XMLFilePath -Destination "$TargetDirectory\ofl.cab"
+        }
+
+        if($Bitness -eq [Bitness]::Both -or $Bitness -eq [Bitness]::v32){
+            $32XMLFileName = "o365client_32bit.xml"
+            expand $XMLFilePath $env:TEMP -f:$32XMLFileName | Out-Null
+            $32XMLFilePath = $env:TEMP + "\o365client_32bit.xml"
+            [xml]$32XML = Get-Content $32XMLFilePath
+            $xmlArray = ($32XML)
+        }
+
+        if($Bitness -eq [Bitness]::Both -or $Bitness -eq [Bitness]::v64){
+            $64XMLFileName = "o365client_64bit.xml"
+            expand $XMLFilePath $env:TEMP -f:$64XMLFileName | Out-Null
+            $64XMLFilePath = $env:TEMP + "\o365client_64bit.xml"
+            [xml]$64XML = Get-Content $64XMLFilePath
+            if($xmlArray -ne $null){
+                $xmlArray = ($32XML,$64XML)
+                $numberOfFiles = $numberOfFiles * 2
+            }else{
+                $xmlArray = ($64XML)
+            }
+        }
+
+        $j = 0
+        $b = 0
+        $BranchCount = $BranchesOrChannels.Count * 2
+
+        #loop to download files
+        $xmlArray | %{
+            $CurrentVersionXML = $_
+    
+            $currentBitness = "32-Bit"
+            if ($CurrentVersionXML.OuterXml.Contains("Architecture: 64 Bit")) {
+                $currentBitness = "64-Bit"
+            }
+
+            Write-Host
+            Write-Host "Downloading Bitness : $currentBitness"
+            <# write log#>
+            $lineNum = Get-CurrentLineNumber    
+            $filName = Get-CurrentFileName 
+            WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Downloading Bitness : $currentBitness"
+
+            #loop for each branch
+            $BranchesOrChannels | %{
+                $currentBranch = $_
+                $b++
+
+                Write-Progress -id 1 -Activity "Downloading Channel" -status "Channel: $($currentBranch.ToString()) : $currentBitness" -percentComplete ($b / $BranchCount *100) 
+                Write-Host "`tDownloading Channel: $currentBranch"
+                <# write log#>
+                $lineNum = Get-CurrentLineNumber    
+                $filName = Get-CurrentFileName 
+                WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Downloading Channel: $currentBranch"
+
+                $FolderName = $($_.ToString())
+
+                if ($UseChannelFolderShortName) {
+                   $FolderName = ConvertChannelNameToShortName -ChannelName $FolderName  
+                }
+       
+                $baseURL = $CurrentVersionXML.UpdateFiles.baseURL | ? branch -eq $_.ToString() | %{$_.URL};
+                if(!(Test-Path "$TargetDirectory\$FolderName\")){
+                    New-Item -Path "$TargetDirectory\$FolderName\" -ItemType directory -Force | Out-Null
+                }
+                if(!(Test-Path "$TargetDirectory\$FolderName\Office")){
+                    New-Item -Path "$TargetDirectory\$FolderName\Office" -ItemType directory -Force | Out-Null
+                }
+                if(!(Test-Path "$TargetDirectory\$FolderName\Office\Data")){
+                    New-Item -Path "$TargetDirectory\$FolderName\Office\Data" -ItemType directory -Force | Out-Null
+                }
+
+                if([String]::IsNullOrWhiteSpace($Version)){
+                    #get base .cab to get current version
+                    $baseCabFile = $CurrentVersionXML.UpdateFiles.File | ? rename -ne $null
+                    $url = "$baseURL$($baseCabFile.relativePath)$($baseCabFile.rename)"
+                    $destination = "$TargetDirectory\$FolderName\Office\Data\$($baseCabFile.rename)"
+
+                    DownloadFile -url $url -targetFile $destination
+
+                    expand $destination $env:TEMP -f:"VersionDescriptor.xml" | Out-Null
+                    $baseCabFileName = $env:TEMP + "\VersionDescriptor.xml"
+                    [xml]$vdxml = Get-Content $baseCabFileName
+                    $currentVersion = $vdxml.Version.Available.Build;
+                    Remove-Item -Path $baseCabFileName
+                }else{
+                    $currentVersion = $Version
+
+                    $relativePath = $_.relativePath -replace "`%version`%", $currentVersion
+                    $fileName = "/Office/Data/v32_$currentVersion.cab"
+                    $url = "$baseURL$relativePath$fileName"
+
+                    try {
+                        Invoke-WebRequest -Uri $url -ErrorAction Stop | Out-Null
+                    } catch {
+                      Write-Host "`t`tVersion Not Found: $currentVersion"
+                      <# write log#>
+                        $lineNum = Get-CurrentLineNumber    
+                        $filName = Get-CurrentFileName 
+                        WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Version Not Found: $currentVersion"
+                      return 
+                    }
+                }
+
+                if(!(Test-Path "$TargetDirectory\$FolderName\Office\Data\$currentVersion")){
+                    New-Item -Path "$TargetDirectory\$FolderName\Office\Data\$currentVersion" -ItemType directory -Force | Out-Null
+                }
+				if(!(Test-Path "$TargetDirectory\$FolderName\Office\Data\$currentVersion\Experiment")){
+                     New-Item -Path "$TargetDirectory\$FolderName\Office\Data\$currentVersion\Experiment" -ItemType directory -Force | Out-Null
+ 				}
+
+                
+                if(!(Test-Path "$TargetDirectory\$FolderName\Office\Data\$currentVersion\Experiment")){
+                    New-Item -Path "$TargetDirectory\$FolderName\Office\Data\$currentVersion\Experiment" -ItemType directory -Force | Out-Null
+                }
+                $numberOfFiles = 0
+                $j = 0
+
+                $CurrentVersionXML.UpdateFiles.File | ? language -eq "0" | 
+                %{
+                   $numberOfFiles ++
+                }
+
+                $Languages | 
+                %{
+                    #LANGUAGE LOGIC HERE
+                    $languageId  = [globalization.cultureinfo]::GetCultures("allCultures") | ? Name -eq $_ | %{$_.LCID}
+                    $CurrentVersionXML.UpdateFiles.File | ? language -eq $languageId | 
+                            %{
+                   $numberOfFiles ++
+                }
+                }
+
+
+                #basic files
+                $CurrentVersionXML.UpdateFiles.File | ? language -eq "0" | 
+                %{
+                    $name = $_.name -replace "`%version`%", $currentVersion
+                    $relativePath = $_.relativePath -replace "`%version`%", $currentVersion
+                    $url = "$baseURL$relativePath$name"
+                    $fileType = $name.split('.')[$name.split['.'].Count - 1]
+                    $bitnessValue = $currentBitness.split('-')[0].ToString()
+                    $destination = "$TargetDirectory\$FolderName$relativePath$name"
+                               
+                    for( $retryCount = 0; $retryCount -lt 3;  $retryCount++) {
+                        try {
+
+                            if (!(Test-Path -Path $destination) -or $OverWrite ) { 
+                               DownloadFile -url $url -targetFile $destination
+                     
+                               if($fileType -eq 'dat')
+                               {                                   
+                                   $hashFileName = $name.replace("dat","hash")
+                                   $cabFile = "$TargetDirectory\$FolderName"+$relativePath.Replace('/','\')+"s"+$bitnessValue+"0.cab"
+                                   $noneHashLocation = $CurrentVersionXML.UpdateFiles.File | ? name -eq $name |%{$_.hashLocation}                    
+                                   expand $cabFile f:* $env:Temp\ | Out-Null
+                                   
+                                   $fileHash = Get-FileHash $destination.replace('/','\')
+                                   $providedHash = Get-Content $env:Temp\$hashFileName
+
+                                   if($fileHash.hash -ne $providedHash)
+                                   {
+                                    throw;
+                                   }
+                                    else{
+                                        break;
+                                   }           
+                               }
+                           }
+                        }
+                        catch{
+                            $OverWrite = $true 
+                            if ($retryCount -eq 2) {
+                                    throw "$name file hash is not correct" 
+                                }        
+                        }
+                    }
+
+                    $j = $j + 1
+                    Write-Progress -id 2 -ParentId 1 -Activity "Downloading Channel Files" -status "Channel: $($currentBranch.ToString())" -percentComplete ($j / $numberOfFiles *100)
+                }
+
+                #language files
+                $Languages | 
+                %{
+                    #LANGUAGE LOGIC HERE
+                    $languageId  = [globalization.cultureinfo]::GetCultures("allCultures") | ? Name -eq $_ | %{$_.LCID}
+					$bitnessValue = $currentBitness.split('-')[0].ToString()
+                    $CurrentVersionXML.UpdateFiles.File | ? language -eq $languageId | 
+
+                    %{
+                    
+                    $name = $_.name -replace "`%version`%", $currentVersion                    
+                    for( $retryCount = 0; $retryCount -lt 3;  $retryCount++) {
+                            try {
+                        
+                            $fileType = $name.split('.')[$name.split['.'].Count - 1]
+                            $relativePath = $_.relativePath -replace "`%version`%", $currentVersion
+                            $url = "$baseURL$relativePath$name"
+                            $destination = "$TargetDirectory\$FolderName"+$relativePath.replace('/','\')+"$name"
+                     
+
+                            if (!(Test-Path -Path $destination) -or $OverWrite) {
+                               DownloadFile -url $url -targetFile $destination
+
+                               if($fileType -eq 'dat'){
+                                    $cabFile = "s$bitnessValue$languageId.cab"
+                                    $hashFile = $name.replace('dat','hash')
+                                    expand "$TargetDirectory\$FolderName$relativePath$cabfile" f:* $env:Temp\ | Out-Null
+
+                                    $fileHash = Get-FileHash $destination
+                                    $providedHash = Get-Content $env:TEMP\$hashFile
+
+                                    if($fileHash.hash -ne $providedHash){
+                                        throw;
+                                    }
+                                    else{
+                                        break;
+                                    }
+                               }
+                            }
+                            }
+                            catch{
+                            $OverWrite = $true 
+                                if ($retryCount -eq 2) {
+                                     throw "$name file hash is not correct" 
+                            }
+                            }
+                        }
+
+                        $j = $j + 1
+                        Write-Progress -id 2 -ParentId 1 -Activity "Downloading Channel Files" -status "Channel: $($currentBranch.ToString())" -percentComplete ($j / $numberOfFiles *100)
+                    }
+                }
+
+
+            }
+
+        }
+
     }
-    else
+    catch 
     {
-        $setupFileName = 'Office2016Setup.exe'
-    } 
-	$localSetupFilePath = ".\$setupFileName"
-	$setupFilePath = "$UncPath\$localSetupFilePath"
-	
-	Copy-Item -Path $localSetupFilePath -Destination $UncPath -Force
-	
-	$downloadConfigFileName = 'Configuration_Download.xml'
-	$downloadConfigFilePath = "$UncPath\$downloadConfigFileName"
-	$localDownloadConfigFilePath = ".\$downloadConfigFileName"
-	
-	$installConfigFileName = 'Configuration_InstallLocally.xml'
-	$installConfigFilePath = "$UncPath\$installConfigFileName"
-	$localInstallConfigFilePath = ".\$installConfigFileName"
-	
-	$content = [Xml](Get-Content $localDownloadConfigFilePath)
-	$addNode = $content.Configuration.Add
-	$addNode.OfficeClientEdition = $Bitness
-    $addNode.SourcePath = $UncPath
-	Write-Host 'Saving Download Configuration XML'	
-<# write log#>
-    $lineNum = Get-CurrentLineNumber    
-    $filName = Get-CurrentFileName 
-    WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Saving Download Configuration XML"
-	$content.Save($downloadConfigFilePath)
-	
-	$content = [Xml](Get-Content $localInstallConfigFilePath)
-	$addNode = $content.Configuration.Add
-	$addNode.OfficeClientEdition = $Bitness
-	$addNode.SourcePath = $UncPath
-	$updatesNode = $content.Configuration.Updates
-	$updatesNode.UpdatePath = $UncPath
-	Write-Host 'Saving Install Configuration XML'
-    <# write log#>
-    $lineNum = Get-CurrentLineNumber    
-    $filName = Get-CurrentFileName 
-    WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Saving Install Configuration XML"
-	$content.Save($installConfigFilePath)
-	
-	Write-Host 'Setting up Click2Run to download Office to UNC Path'
-<# write log#>
-    $lineNum = Get-CurrentLineNumber    
-    $filName = Get-CurrentFileName 
-    WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Setting up Click2Run to download Office to UNC Path"
-	
-	Set-Location $UncPath
-	
-	$app = ".\$setupFileName"
-	$arguments = "/download", "$downloadConfigFileName"
-	
-	Write-Host 'Starting Download'
-<# write log#>
-    $lineNum = Get-CurrentLineNumber    
-    $filName = Get-CurrentFileName 
-    WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Starting Download"
-	& $app @arguments
-	
-	Write-Host 'Download Complete'	
-<# write log#>
-    $lineNum = Get-CurrentLineNumber    
-    $filName = Get-CurrentFileName 
-    WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Download Complete"
+        #if download fails, displays error, continues loop
+        $errorMessage = $computer + ": " + $_
+        Write-Host $errorMessage -ForegroundColor White -BackgroundColor Red
+        $downloadSuccess = $FALSE;
+        $fileName = $_.InvocationInfo.ScriptName.Substring($_.InvocationInfo.ScriptName.LastIndexOf("\")+1)
+        WriteToLogFile -LNumber $_.InvocationInfo.ScriptLineNumber -FName $fileName -ActionError $_
     }
-    End
-    {
-	    Set-ExecutionPolicy $currentExecutionPolicy -Scope Process -Force
-        Set-Location $startLocation
+
+    if($downloadSuccess){#if download succeeds, breaks out of loop
+        break
     }
+
+}#end of for loop
+
+PurgeOlderVersions $TargetDirectory $NumVersionsToKeep $BranchesOrChannels
 
 }
 
@@ -115,295 +411,502 @@ Function Configure-GPOOfficeInstallation {
     Param
     (
 	    [Parameter(Mandatory=$True)]
-	    [String]$GpoName,
+	    [string]$GroupPolicyName,
 	
 	    [Parameter(Mandatory=$True)]
-	    [String]$UncPath,
-
-	    [Parameter(Mandatory=$True)]
-	    [OfficeVersion]$OfficeVersion,
+	    [string]$UncPath,
 	
 	    [Parameter()]
-	    [String]$ConfigFileName = "Configuration_InstallLocally.xml" 
+	    [string]$ConfigFileName = "configuration.xml",
+        
+        [Parameter()]
+        [string]$ScriptName = "Install-OfficeClickToRun.ps1"
     )
 
     Begin
     {
 	    $currentExecutionPolicy = Get-ExecutionPolicy
 	    Set-ExecutionPolicy Unrestricted -Scope Process -Force  
-        $startLocation = Get-Location
-        if($OfficeVersion -eq "Office2013")
-        {
-            [String]$ScriptName = "InstallOffice2013.ps1"
-        }
-        else
-        {
-            [String]$ScriptName = "InstallOffice2016.ps1"
-        }
+        $startLocation = Get-Location        
     }
 
-    Process {
+    Process 
+    {
+        $Root = [ADSI]"LDAP://RootDSE"
+        $DomainPath = $Root.Get("DefaultNamingContext")
 
-    $Root = [ADSI]"LDAP://RootDSE"
-    $DomainPath = $Root.Get("DefaultNamingContext")
-
-    Write-Host "Configuring Group Policy to Install Office Click-To-Run"
-    Write-Host
-    <# write log#>
-    $lineNum = Get-CurrentLineNumber    
-    $filName = Get-CurrentFileName 
-    WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Configuring Group Policy to Install Office Click-To-Run"
-
-    Write-Host "Searching for GPO: $GpoName..." -NoNewline
-    <# write log#>
-    $lineNum = Get-CurrentLineNumber    
-    $filName = Get-CurrentFileName 
-    WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Searching for GPO: $GpoName..."
-	$gpo = Get-GPO -Name $GpoName
-	
-	if(!$gpo -or ($gpo -eq $null))
-	{
+        Write-Host "Configuring Group Policy to Install Office Click-To-Run"
+        Write-Host
         <# write log#>
         $lineNum = Get-CurrentLineNumber    
         $filName = Get-CurrentFileName 
-        WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "The GPO $GpoName could not be found."
-		Write-Error "The GPO $GpoName could not be found."
-		Exit
-	}
+        WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Configuring Group Policy to Install Office Click-To-Run"
 
-    Write-Host "GPO Found"
-    <# write log#>
-    $lineNum = Get-CurrentLineNumber    
-    $filName = Get-CurrentFileName 
-    WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "GPO Found"
+        Write-Host "Searching for GPO: $GroupPolicyName..." -NoNewline
+        <# write log#>
+        $lineNum = Get-CurrentLineNumber    
+        $filName = Get-CurrentFileName 
+        WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Searching for GPO: $GroupPolicyName..."
+	    $gpo = Get-GPO -Name $GroupPolicyName
+	
+	    if(!$gpo -or ($gpo -eq $null))
+	    {
+            <# write log#>
+            $lineNum = Get-CurrentLineNumber    
+            $filName = Get-CurrentFileName 
+            WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "The GPO $GroupPolicyName could not be found."
+		    Write-Error "The GPO $GroupPolicyName could not be found."
+		    Exit
+	    }
 
-    Write-Host "Modifying GPO: $GpoName..." -NoNewline
-    <# write log#>
-    $lineNum = Get-CurrentLineNumber    
-    $filName = Get-CurrentFileName 
-    WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Modifying GPO: $GpoName..."
+        Write-Host "GPO Found"
+        <# write log#>
+        $lineNum = Get-CurrentLineNumber    
+        $filName = Get-CurrentFileName 
+        WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "GPO Found"
 
-	$baseSysVolPath = "$env:LOGONSERVER\sysvol"
+        Write-Host "Modifying GPO: $GroupPolicyName..." -NoNewline
+        <# write log#>
+        $lineNum = Get-CurrentLineNumber    
+        $filName = Get-CurrentFileName 
+        WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Modifying GPO: $GroupPolicyName..."
 
-	$domain = $gpo.DomainName
-    $gpoId = $gpo.Id.ToString()
+	    $baseSysVolPath = "$env:LOGONSERVER\sysvol"
 
-    $adGPO = [ADSI]"LDAP://CN={$gpoId},CN=Policies,CN=System,$DomainPath"
+	    $domain = $gpo.DomainName
+        $gpoId = $gpo.Id.ToString()
+
+        $adGPO = [ADSI]"LDAP://CN={$gpoId},CN=Policies,CN=System,$DomainPath"
     	
-	$gpoPath = "{0}\{1}\Policies\{{{2}}}" -f $baseSysVolPath, $domain, $gpoId
-	$relativePathToScriptsFolder = "Machine\Scripts"
-	$scriptsPath = "{0}\{1}" -f $gpoPath, $relativePathToScriptsFolder
+	    $gpoPath = "{0}\{1}\Policies\{{{2}}}" -f $baseSysVolPath, $domain, $gpoId
+	    $relativePathToScriptsFolder = "Machine\Scripts"
+	    $scriptsPath = "{0}\{1}" -f $gpoPath, $relativePathToScriptsFolder
 
-    $createDir = [system.io.directory]::CreateDirectory($scriptsPath) 
+        $createDir = [system.io.directory]::CreateDirectory($scriptsPath) 
 
-	$gptIniFileName = "GPT.ini"
-	$gptIniFilePath = ".\$gptIniFileName"
+	    $gptIniFileName = "GPT.ini"
+	    $gptIniFilePath = ".\$gptIniFileName"
    
-	Set-Location $scriptsPath
+	    Set-Location $scriptsPath
 	
-	#region PSSCripts.ini
-	$psScriptsFileName = "psscripts.ini"
-    $scriptsFileName = "scripts.ini"
+	    #region PSSCripts.ini
+	    $psScriptsFileName = "psscripts.ini"
+        $scriptsFileName = "scripts.ini"
 
-	$psScriptsFilePath = ".\$psScriptsFileName"
-    $scriptsFilePath = ".\$scriptsFileName"
+	    $psScriptsFilePath = ".\$psScriptsFileName"
+        $scriptsFilePath = ".\$scriptsFileName"
 
-	$encoding = 'Unicode' #[System.Text.Encoding]::Unicode
+	    $encoding = 'Unicode' #[System.Text.Encoding]::Unicode
 
-	if(!(Test-Path $psScriptsFilePath))
-	{
-		$baseContent = "`r`n[ScriptsConfig]`r`nStartExecutePSFirst=true`r`n[Startup]"
-		$baseContent | Out-File -FilePath $psScriptsFilePath -Encoding unicode -Force
+	    if(!(Test-Path $psScriptsFilePath))
+	    {
+		    $baseContent = "`r`n[ScriptsConfig]`r`nStartExecutePSFirst=true`r`n[Startup]"
+		    $baseContent | Out-File -FilePath $psScriptsFilePath -Encoding unicode -Force
 		
-		$file = Get-ChildItem -Path $psScriptsFilePath
-		$file.Attributes = $file.Attributes -bor ([System.IO.FileAttributes]::Hidden).value__
-	}
+		    $file = Get-ChildItem -Path $psScriptsFilePath
+		    $file.Attributes = $file.Attributes -bor ([System.IO.FileAttributes]::Hidden).value__
+	    }
 
-	if(!(Test-Path $scriptsFilePath))
-	{
-        "" | Out-File -FilePath $scriptsFilePath -Encoding unicode -Force
+	    if(!(Test-Path $scriptsFilePath))
+	    {
+            "" | Out-File -FilePath $scriptsFilePath -Encoding unicode -Force
 
-		$file = Get-ChildItem -Path $scriptsFilePath
-		$file.Attributes = $file.Attributes -bor ([System.IO.FileAttributes]::Hidden).value__
-    }
+		    $file = Get-ChildItem -Path $scriptsFilePath
+		    $file.Attributes = $file.Attributes -bor ([System.IO.FileAttributes]::Hidden).value__
+        }
 	
-	$content = Get-Content -Encoding $encoding -Path $psScriptsFilePath
+	    $content = Get-Content -Encoding $encoding -Path $psScriptsFilePath
 
-	$length = $content.Length
+	    $length = $content.Length
 
-	$newContentLength = $length + 2
+	    $newContentLength = $length + 2
 
-	$newContent = New-Object System.String[] ($newContentLength)
+	    $newContent = New-Object System.String[] ($newContentLength)
 
-	$pattern = [string]"\[\w+\]"
+	    $pattern = [string]"\[\w+\]"
 
-	$startUpIndex = 0
-	$nextIndex = 0
-	$startUpFound = $false
+	    $startUpIndex = 0
+	    $nextIndex = 0
+	    $startUpFound = $false
 
-	foreach($s in $content)
-	{
-		if($s -match $pattern)
-		{
-		   if($startUpFound)
-		   {
-			  $nextIndex = $content.IndexOf($s) - 1
-			  break
-		   }
-		   else
-		   {
-				if($s -eq "[Startup]")
-				{
-					$startUpIndex = $content.IndexOf($s)
-					$startUpFound = $true
-				}
-		   }
-		}
-	}
+	    foreach($s in $content)
+	    {
+		    if($s -match $pattern)
+		    {
+		       if($startUpFound)
+		       {
+			      $nextIndex = $content.IndexOf($s) - 1
+			      break
+		       }
+		       else
+		       {
+				    if($s -eq "[Startup]")
+				    {
+					    $startUpIndex = $content.IndexOf($s)
+					    $startUpFound = $true
+				    }
+		       }
+		    }
+	    }
 
-	if($startUpFound -and ($nextIndex -eq 0))
-	{
-		$nextIndex = $content.Count - 1;
-	}
+	    if($startUpFound -and ($nextIndex -eq 0))
+	    {
+		    $nextIndex = $content.Count - 1;
+	    }
 	
-	$lastEntry = [string]$content[$nextIndex]
+	    $lastEntry = [string]$content[$nextIndex]
 
-	$num = [regex]::Matches($lastEntry, "\d+")[0].Value   
+	    $num = [regex]::Matches($lastEntry, "\d+")[0].Value   
 	
-	if($num)
-	{
-		$lastScriptIndex = [Convert]::ToInt32($num)
-	}
-	else
-	{
-		$lastScriptIndex = 0
-		$nextScriptIndex = 0
-	}
+	    if($num)
+	    {
+		    $lastScriptIndex = [Convert]::ToInt32($num)
+	    }
+	    else
+	    {
+		    $lastScriptIndex = 0
+		    $nextScriptIndex = 0
+	    }
 	
-	if($lastScriptIndex -gt 0)
-	{
-		$nextScriptIndex = $lastScriptIndex + 1
-	}
+	    if($lastScriptIndex -gt 0)
+	    {
+		    $nextScriptIndex = $lastScriptIndex + 1
+	    }
 
-	for($i=0; $i -le $nextIndex; $i++)
-	{
-		$newContent[$i] = $content[$i]
-	}
+	    for($i=0; $i -le $nextIndex; $i++)
+	    {
+		    $newContent[$i] = $content[$i]
+	    }
 
-	$newContent[$nextIndex+1] = "{0}CmdLine={1}" -f $nextScriptIndex, $ScriptName
+	    $newContent[$nextIndex+1] = "{0}CmdLine={1}" -f $nextScriptIndex, $ScriptName
 
-	$newContent[$nextIndex+2] = "{0}Parameters=-UncPath {1} -ConfigFileName {2}" -f $nextScriptIndex, $UncPath, $ConfigFileName
+	    $newContent[$nextIndex+2] = "{0}Parameters=-UncPath {1} -ConfigFileName {2}" -f $nextScriptIndex, $UncPath, $ConfigFileName
 
-	for($i=$nextIndex; $i -lt $length; $i++)
-	{
-		$newContent[$i] = $content[$i]
-	}
+	    for($i=$nextIndex; $i -lt $length; $i++)
+	    {
+		    $newContent[$i] = $content[$i]
+	    }
 
-	$newContent | Set-Content -Encoding $encoding -Path $psScriptsFilePath -Force
-	#endregion
+	    $newContent | Set-Content -Encoding $encoding -Path $psScriptsFilePath -Force
+	    #endregion
 	
-	#region Place the script to attach in the StartUp Folder
-	$setupExeSourcePath = "$startLocation\$ScriptName"
-	$setupExeTargetPath = "$scriptsPath\StartUp"
-    $setupExeTargetPathShutdown = "$scriptsPath\ShutDown"
+	    #region Place the script to attach in the StartUp Folder
+	    $setupExeSourcePath = "$startLocation\$ScriptName"
+	    $setupExeTargetPath = "$scriptsPath\StartUp"
+        $setupExeTargetPathShutdown = "$scriptsPath\ShutDown"
 
-    $createDir = [system.io.directory]::CreateDirectory($setupExeTargetPath) 
-    $createDir = [system.io.directory]::CreateDirectory($setupExeTargetPathShutdown) 
+        $createDir = [system.io.directory]::CreateDirectory($setupExeTargetPath) 
+        $createDir = [system.io.directory]::CreateDirectory($setupExeTargetPathShutdown) 
 	
-	Copy-Item -Path $setupExeSourcePath -Destination $setupExeTargetPath -Force
-	#endregion
+	    Copy-Item -Path $setupExeSourcePath -Destination $setupExeTargetPath -Force
+	    #endregion
 	
-	#region Update GPT.ini
-	Set-Location $gpoPath   
+	    #region Update GPT.ini
+	    Set-Location $gpoPath   
 
-	$encoding = 'ASCII' #[System.Text.Encoding]::ASCII
-	$gptIniContent = Get-Content -Encoding $encoding -Path $gptIniFilePath
+	    $encoding = 'ASCII' #[System.Text.Encoding]::ASCII
+	    $gptIniContent = Get-Content -Encoding $encoding -Path $gptIniFilePath
 	
-    [int]$newVersion = 0
-	foreach($s in $gptIniContent)
-	{
-		if($s.StartsWith("Version"))
-		{
-			$index = $gptIniContent.IndexOf($s)
+        [int]$newVersion = 0
+	    foreach($s in $gptIniContent)
+	    {
+		    if($s.StartsWith("Version"))
+		    {
+			    $index = $gptIniContent.IndexOf($s)
 
-			#Write-Host "Old GPT.ini Version: $s"
+			    #Write-Host "Old GPT.ini Version: $s"
 
-			$num = ($s -split "=")[1]
+			    $num = ($s -split "=")[1]
 
-			$ver = [Convert]::ToInt32($num)
+			    $ver = [Convert]::ToInt32($num)
 
-			$newVer = $ver + 1
+			    $newVer = $ver + 1
 
-			$s = $s -replace $num, $newVer.ToString()
+			    $s = $s -replace $num, $newVer.ToString()
 
-			#Write-Host "New GPT.ini Version: $s"
+			    #Write-Host "New GPT.ini Version: $s"
 
-            $newVersion = $s.Split('=')[1]
+                $newVersion = $s.Split('=')[1]
 
-			$gptIniContent[$index] = $s
-			break
-		}
-	}
+			    $gptIniContent[$index] = $s
+			    break
+		    }
+	    }
 
-    [System.Collections.ArrayList]$extList = New-Object System.Collections.ArrayList
+        [System.Collections.ArrayList]$extList = New-Object System.Collections.ArrayList
 
-    Try {
-       $currentExt = $adGPO.get('gPCMachineExtensionNames')
-    } Catch { 
+        Try {
+           $currentExt = $adGPO.get('gPCMachineExtensionNames')
+        } Catch { 
 
-    }
+        }
 
-    if ($currentExt) {
-        $extSplit = $currentExt.Split(']')
+        if ($currentExt) {
+            $extSplit = $currentExt.Split(']')
 
-        foreach ($extGuid in $extSplit) {
-          if ($extGuid) {
-            if ($extGuid.Length -gt 0) {
-                $addItem = $extList.Add($extGuid.Replace("[", "").ToUpper())
+            foreach ($extGuid in $extSplit) {
+              if ($extGuid) {
+                if ($extGuid.Length -gt 0) {
+                    $addItem = $extList.Add($extGuid.Replace("[", "").ToUpper())
+                }
+              }
             }
-          }
         }
-    }
 
-    $extGuids = @("{42B5FAAE-6536-11D2-AE5A-0000F87571E3}{40B6664F-4972-11D1-A7CA-0000F87571E3}")
+        $extGuids = @("{42B5FAAE-6536-11D2-AE5A-0000F87571E3}{40B6664F-4972-11D1-A7CA-0000F87571E3}")
 
-    foreach ($extGuid in $extGuids) {
-        if (!$extList.Contains($extGuid)) {
-          $addItem = $extList.Add($extGuid)
+        foreach ($extGuid in $extGuids) {
+            if (!$extList.Contains($extGuid)) {
+              $addItem = $extList.Add($extGuid)
+            }
         }
-    }
 
-    foreach ($extAddGuid in $extList) {
-       $newGptExt += "[$extAddGuid]"
-    }
+        foreach ($extAddGuid in $extList) {
+           $newGptExt += "[$extAddGuid]"
+        }
 
-    $adGPO.put('versionNumber',$newVersion)
-    $adGPO.put('gPCMachineExtensionNames',$newGptExt)
-    $adGPO.CommitChanges()
+        $adGPO.put('versionNumber',$newVersion)
+        $adGPO.put('gPCMachineExtensionNames',$newGptExt)
+        $adGPO.CommitChanges()
     
-	$gptIniContent | Set-Content -Encoding $encoding -Path $gptIniFilePath -Force
+	    $gptIniContent | Set-Content -Encoding $encoding -Path $gptIniFilePath -Force
 	
-    Write-Host "GPO Modified"
-    Write-Host ""
-    Write-Host "The Group Policy '$GpoName' has been modified to install Office at Workstation Startup." -BackgroundColor DarkBlue
-    Write-Host "Once Group Policy has refreshed on the Workstations then Office will install on next startup if the computer has access to the Network Share." -BackgroundColor DarkBlue
+        Write-Host "GPO Modified"
+        Write-Host ""
+        Write-Host "The Group Policy '$GroupPolicyName' has been modified to install Office at Workstation Startup." -BackgroundColor DarkBlue
+        Write-Host "Once Group Policy has refreshed on the Workstations then Office will install on next startup if the computer has access to the Network Share." -BackgroundColor DarkBlue
+        <# write log#>
+        $lineNum = Get-CurrentLineNumber    
+        $filName = Get-CurrentFileName 
+        WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "GPO Modified"
+        WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "The Group Policy '$GroupPolicyName' has been modified to install Office at Workstation Startup."
+        WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Once Group Policy has refreshed on the Workstations then Office will install on next startup if the computer has access to the Network Share."
+
+    }
+
+    End 
+    {      
+       $setLocation = Set-Location $startLocation
+    }
+}
+
+function DownloadFile($url, $targetFile) {
+
+  for($t=1;$t -lt 10; $t++) {
+   try {
+       $uri = New-Object "System.Uri" "$url"
+       $request = [System.Net.HttpWebRequest]::Create($uri)
+       $request.set_Timeout(15000) #15 second timeout
+
+       $response = $request.GetResponse()
+       $totalLength = [System.Math]::Floor($response.get_ContentLength()/1024)
+       $responseStream = $response.GetResponseStream()
+       $targetStream = New-Object -TypeName System.IO.FileStream -ArgumentList $targetFile.replace('/','\'), Create
+       $buffer = new-object byte[] 8192KB
+       $count = $responseStream.Read($buffer,0,$buffer.length)
+       $downloadedBytes = $count
+
+       while ($count -gt 0)
+       {
+           $targetStream.Write($buffer, 0, $count)
+           $count = $responseStream.Read($buffer,0,$buffer.length)
+           $downloadedBytes = $downloadedBytes + $count
+           Write-Progress -id 3 -ParentId 2 -activity "Downloading file '$($url.split('/') | Select -Last 1)'" -status "Downloaded ($([System.Math]::Floor($downloadedBytes/1024))K of $($totalLength)K): " -PercentComplete ((([System.Math]::Floor($downloadedBytes/1024)) / $totalLength)  * 100)
+       }
+
+       Write-Progress -id 3 -ParentId 2 -activity "Finished downloading file '$($url.split('/') | Select -Last 1)'"
+
+       $targetStream.Flush()
+       $targetStream.Close()
+       $targetStream.Dispose()
+       $responseStream.Dispose()
+       break;
+   } catch {
+     $strError = $_.Message
+     if ($t -ge 9) {
+        throw
+     }
+   }
+   Start-Sleep -Milliseconds 500
+  }
+}
+
+function PurgeOlderVersions([string]$targetDirectory, [int]$numVersionsToKeep, [array]$channels){
+    Write-Host "Checking for Older Versions"
     <# write log#>
     $lineNum = Get-CurrentLineNumber    
     $filName = Get-CurrentFileName 
-    WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "GPO Modified"
-    WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "The Group Policy '$GpoName' has been modified to install Office at Workstation Startup."
-    WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Once Group Policy has refreshed on the Workstations then Office will install on next startup if the computer has access to the Network Share."
+    WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Checking for Older Versions"
+                         
+    for($k = 0; $k -lt $channels.Count; $k++)
+    {
+        [array]$totalVersions = @()#declare empty array so each folder can be purged of older versions individually
+        [string]$channelName = $channels[$k]
+        [string]$shortChannelName = ConvertChannelNameToShortName -ChannelName $channelName
+        [string]$branchName = ConvertChannelNameToBranchName -ChannelName $channelName
+        [string]$channelName2 = ConvertBranchNameToChannelName -BranchName $channelName
 
+        $folderList = @($channelName, $shortChannelName, $channelName2, $branchName)
+
+        foreach ($folderName in $folderList) {
+            $directoryPath = $TargetDirectory.ToString() + '\'+ $folderName +'\Office\Data'
+
+            if (Test-Path -Path $directoryPath) {
+               break;
+            }
+        }
+
+        if (Test-Path -Path $directoryPath) {
+            Write-Host "`tChannel: $channelName2"
+            <# write log#>
+            $lineNum = Get-CurrentLineNumber    
+            $filName = Get-CurrentFileName 
+            WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Channel: $channelName2"
+             [bool]$versionsToRemove = $false
+
+            $files = Get-ChildItem $directoryPath  
+            Foreach($file in $files)
+            {        
+                if($file.GetType().Name -eq 'DirectoryInfo')
+                {
+                    $totalVersions+=$file.Name
+                }
+            }
+
+            #check if number of versions is greater than number of versions to hold onto, if not, then we don't need to do anything
+            if($totalVersions.Length -gt $numVersionsToKeep)
+            {
+                #sort array in numerical order
+                $totalVersions = $totalVersions | Sort-Object 
+               
+                #delete older versions
+                $numToDelete = $totalVersions.Length - $numVersionsToKeep
+                for($i = 1; $i -le $numToDelete; $i++)#loop through versions
+                {
+                     $versionsToRemove = $true
+                     $removeVersion = $totalVersions[($i-1)]
+                     Write-Host "`t`tRemoving Version: $removeVersion"
+                     <# write log#>
+                    $lineNum = Get-CurrentLineNumber    
+                    $filName = Get-CurrentFileName 
+                    WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Removing Version: $removeVersion"
+                     
+                     Foreach($file in $files)#loop through files
+                     {  #array is 0 based
+
+                        if($file.Name.Contains($removeVersion))
+                        {                               
+                            $folderPath = "$directoryPath\$file"
+
+                             for($t=1;$t -lt 5; $t++) {
+                               try {
+                                  Remove-Item -Recurse -Force $folderPath
+                                  break;
+                               } catch {
+                                 if ($t -ge 4) {
+                                    throw
+                                 }
+                               }
+                             }
+                        }
+                     }
+                }
+
+            }
+
+            if (!($versionsToRemove)) {
+                Write-Host "`t`tNo Versions to Remove"
+                 <# write log#>
+                $lineNum = Get-CurrentLineNumber    
+                $filName = Get-CurrentFileName 
+                WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "No Versions to Remove"
+            }
+        }
+
+
+    }    
+      
+}
+
+function ConvertChannelNameToShortName {
+    Param(
+       [Parameter()]
+       [string] $ChannelName
+    )
+    Process {
+       if ($ChannelName.ToLower() -eq "FirstReleaseCurrent".ToLower()) {
+         return "FRCC"
+       }
+       if ($ChannelName.ToLower() -eq "Current".ToLower()) {
+         return "CC"
+       }
+       if ($ChannelName.ToLower() -eq "FirstReleaseDeferred".ToLower()) {
+         return "FRDC"
+       }
+       if ($ChannelName.ToLower() -eq "Deferred".ToLower()) {
+         return "DC"
+       }
+       if ($ChannelName.ToLower() -eq "Business".ToLower()) {
+         return "DC"
+       }
+       if ($ChannelName.ToLower() -eq "FirstReleaseBusiness".ToLower()) {
+         return "FRDC"
+       }
     }
+}
 
-    End {
-       
-       $setLocation = Set-Location $startLocation
-
-
+function ConvertChannelNameToBranchName {
+    Param(
+       [Parameter()]
+       [string] $ChannelName
+    )
+    Process {
+       if ($ChannelName.ToLower() -eq "FirstReleaseCurrent".ToLower()) {
+         return "FirstReleaseCurrent"
+       }
+       if ($ChannelName.ToLower() -eq "Current".ToLower()) {
+         return "Current"
+       }
+       if ($ChannelName.ToLower() -eq "FirstReleaseDeferred".ToLower()) {
+         return "FirstReleaseBusiness"
+       }
+       if ($ChannelName.ToLower() -eq "Deferred".ToLower()) {
+         return "Business"
+       }
+       if ($ChannelName.ToLower() -eq "Business".ToLower()) {
+         return "Business"
+       }
+       if ($ChannelName.ToLower() -eq "FirstReleaseBusiness".ToLower()) {
+         return "FirstReleaseBusiness"
+       }
     }
+}
 
-
+function ConvertBranchNameToChannelName {
+    Param(
+       [Parameter()]
+       [string] $BranchName
+    )
+    Process {
+       if ($BranchName.ToLower() -eq "FirstReleaseCurrent".ToLower()) {
+         return "FirstReleaseCurrent"
+       }
+       if ($BranchName.ToLower() -eq "Current".ToLower()) {
+         return "Current"
+       }
+       if ($BranchName.ToLower() -eq "FirstReleaseDeferred".ToLower()) {
+         return "FirstReleaseDeferred"
+       }
+       if ($BranchName.ToLower() -eq "Deferred".ToLower()) {
+         return "Deferred"
+       }
+       if ($BranchName.ToLower() -eq "Business".ToLower()) {
+         return "Deferred"
+       }
+       if ($BranchName.ToLower() -eq "FirstReleaseBusiness".ToLower()) {
+         return "FirstReleaseDeferred"
+       }
+    }
 }
 
 function Get-CurrentLineNumber {
