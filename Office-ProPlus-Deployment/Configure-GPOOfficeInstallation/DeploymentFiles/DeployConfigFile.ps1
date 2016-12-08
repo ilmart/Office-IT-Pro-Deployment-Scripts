@@ -1,6 +1,12 @@
   param(
 	[Parameter(Mandatory=$true)]
 	[String]$ConfigFileName = $NULL,
+    
+    [Parameter()]
+    [bool]$WaitForInstallToFinish = $true,
+
+    [Parameter()]
+    [bool]$InstallProofingTools = $false,
 
     [Parameter()]
     [bool]$InstallLanguagePack = $false
@@ -79,9 +85,6 @@ Process {
      }
  }
 
- if($InstallLanguagePack){
-     Install-OfficeClickToRun -TargetFilePath $targetFilePath -ConfigurationXML $configFilePath
- } else {
-     Install-OfficeClickToRun -TargetFilePath $targetFilePath
- }
+ Install-OfficeClickToRun -TargetFilePath $targetFilePath -WaitForInstallToFinish $WaitForInstallToFinish -InstallProofingTools $InstallProofingTools
+
 }

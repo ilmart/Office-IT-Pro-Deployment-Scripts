@@ -43,384 +43,127 @@ using System;
 Add-Type -TypeDefinition $enumDef -ErrorAction SilentlyContinue
 } catch { }
 
-function Download-OfficeProPlusChannels{
+try {
+$enum = "
+using System;
+ 
+    [FlagsAttribute]
+    public enum GPODeploymentType
+    {
+        DeployWithScript = 0,
+        DeployWithConfigurationFile = 1
+    }
+"
+Add-Type -TypeDefinition $enum -ErrorAction SilentlyContinue
+} catch { }
+
+function Download-GPOOfficeChannelFiles() {
 <#
 .SYNOPSIS
-Downloads each Office ProPlus Channel with installation files
+Downloads the Office Click-to-Run files into the specified folder for package creation.
+
 .DESCRIPTION
-This script will dynamically downloaded the most current Office ProPlus version for each deployment Channel
-.PARAMETER Version
-The version number you wish to download. For example: 16.0.6228.1010
-.PARAMETER TargetDirectory
-Required. Where all the channels will be downloaded. Each channel then goes into a folder of the same name as the channel.
-.PARAMETER Languages
-Array of Microsoft language codes. Will throw error if provided values don't match the validation set. Defaults to "en-us"
-("en-us","ar-sa","bg-bg","zh-cn","zh-tw","hr-hr","cs-cz","da-dk","nl-nl","et-ee","fi-fi","fr-fr","de-de","el-gr","he-il","hi-in","hu-hu","id-id","it-it",
-"ja-jp","kk-kz","ko-kr","lv-lv","lt-lt","ms-my","nb-no","pl-pl","pt-br","pt-pt","ro-ro","ru-ru","sr-latn-rs","sk-sk","sl-si","es-es","sv-se","th-th",
-"tr-tr","uk-ua")
-.PARAMETER Bitness
-v32, v64, or Both. What bitness of office you wish to download. Defaults to Both.
-.PARAMETER OverWrite
-If this parameter is specified then existing files will be overwritten.
-.PARAMETER Branches
-An array of the Branches you wish to download (This parameter is left for legacy usage)
+Downloads the Office 365 ProPlus installation files to a specified file path.
+
 .PARAMETER Channels
-An array of the Channels you wish to download. Defaults to all available channels except First Release Current
-.PARAMETER NumVersionsToKeep
-This parameter controls the number of versions to retain. Any older versions will be deleted.
-.PARAMETER UseChannelFolderShortName
-This parameter change the folder name that the scripts creates for each Channel folder. For example if this paramter is set to $true then the Current Channel folder will be named "CC"
-.PARAMETER NumOfRetries
-This parameter Controls the number of times the script will retry if a failure happens
-.PARAMETER IncludeChannelInfo
-This parameter Controls whether the ofl.cab file is downloaded and cached in the root of the TargetDirectory folder
-.Example
-Download-OfficeProPlusChannels -TargetDirectory "\\server\updateshare"
-Default downloads all available channels of the most recent version for both bitnesses into an update source. Downloads the English language pack by default if language is not specified.
-.Link
-https://github.com/OfficeDev/Office-IT-Pro-Deployment-Scripts
+The update channel. Current, Deferred, FirstReleaseDeferred, FirstReleaseCurrent
+
+.PARAMETER OfficeFilesPath
+This is the location where the source files will be downloaded to
+
+.PARAMETER Languages
+All office languages are supported in the ll-cc format "en-us"
+
+.PARAMETER Bitness
+Downloads the bitness of Office Click-to-Run "v32, v64, Both"
+
+.PARAMETER Version
+You can specify the version to download. 16.0.6868.2062. Version information can be found here https://technet.microsoft.com/en-us/library/mt592918.aspx
+
+.EXAMPLE
+Download-CMOfficeChannelFiles -OfficeFilesPath D:\OfficeChannelFiles
+
+.EXAMPLE
+Download-CMOfficeChannelFiles -OfficeFilesPath D:\OfficeChannelFiles -Channels Deferred -Bitness v32
+
+.EXAMPLE
+Download-CMOfficeChannelFiles -OfficeFilesPath D:\OfficeChannelFiles -Bitness v32 -Channels Deferred,FirstReleaseDeferred -Languages en-us,es-es,ja-jp
 #>
 
-Param(
-    [Parameter()]
-    [string] $Version,
-
-    [Parameter(Mandatory=$true)]
-    [string] $TargetDirectory,
-
-    [Parameter()]
-    [ValidateSet("en-us","ar-sa","bg-bg","zh-cn","zh-tw","hr-hr","cs-cz","da-dk","nl-nl","et-ee","fi-fi","fr-fr","de-de","el-gr","he-il","hi-in","hu-hu","id-id","it-it",
-                "ja-jp","kk-kz","ko-kr","lv-lv","lt-lt","ms-my","nb-no","pl-pl","pt-br","pt-pt","ro-ro","ru-ru","sr-latn-rs","sk-sk","sl-si","es-es","sv-se","th-th",
-                "tr-tr","uk-ua","vi-vn")]
-    [string[]] $Languages = ("en-us"),
-
-    [Parameter()]
-    [Bitness] $Bitness = 0,
-
-    [Parameter()]
-    [int] $NumVersionsToKeep = 2,
-
-    [Parameter()]
-    [bool] $UseChannelFolderShortName = $true,
-
-    [Parameter()]
-    [bool] $OverWrite = $false,
-
-    [Parameter()]
-    [OfficeBranch[]] $Branches,
-
-    [Parameter()]
-    [OfficeChannel[]] $Channels = (0, 1, 2, 3),
-
-    [Parameter()]
-    [int] $NumOfRetries = 5,
-
-    [Parameter()]
-    [bool] $IncludeChannelInfo = $false
-)
-
-$BranchesOrChannels = @()
-
-if($Branches.Count -gt 0)
-{
-    foreach ($branchName in $Branches) {
-      $channelConvertName = ConvertBranchNameToChannelName -BranchName $branchName
-      $BranchesOrChannels += $channelConvertName
-    }
-}
-else{
-    $BranchesOrChannels = $Channels
-}
-      
-$numberOfFiles = (($BranchesOrChannels.Count) * ((($Languages.Count + 1)*3) + 5))
-
-[bool]$downloadSuccess = $TRUE;
-For($i=1; $i -le $NumOfRetries; $i++){#loops through download process in the event of a failure in order to retry
-
-    try{
-        $XMLFilePath = "$env:TEMP/ofl.cab"
-        $XMLDownloadURL = "http://officecdn.microsoft.com/pr/wsus/ofl.cab"
-
-        DownloadFile -url $XMLDownloadURL -targetFile $XMLFilePath
-
-        if ($IncludeChannelInfo) {
-            Copy-Item -Path $XMLFilePath -Destination "$TargetDirectory\ofl.cab"
-        }
-
-        if($Bitness -eq [Bitness]::Both -or $Bitness -eq [Bitness]::v32){
-            $32XMLFileName = "o365client_32bit.xml"
-            expand $XMLFilePath $env:TEMP -f:$32XMLFileName | Out-Null
-            $32XMLFilePath = $env:TEMP + "\o365client_32bit.xml"
-            [xml]$32XML = Get-Content $32XMLFilePath
-            $xmlArray = ($32XML)
-        }
-
-        if($Bitness -eq [Bitness]::Both -or $Bitness -eq [Bitness]::v64){
-            $64XMLFileName = "o365client_64bit.xml"
-            expand $XMLFilePath $env:TEMP -f:$64XMLFileName | Out-Null
-            $64XMLFilePath = $env:TEMP + "\o365client_64bit.xml"
-            [xml]$64XML = Get-Content $64XMLFilePath
-            if($xmlArray -ne $null){
-                $xmlArray = ($32XML,$64XML)
-                $numberOfFiles = $numberOfFiles * 2
-            }else{
-                $xmlArray = ($64XML)
-            }
-        }
-
-        $j = 0
-        $b = 0
-        $BranchCount = $BranchesOrChannels.Count * 2
-
-        #loop to download files
-        $xmlArray | %{
-            $CurrentVersionXML = $_
-    
-            $currentBitness = "32-Bit"
-            if ($CurrentVersionXML.OuterXml.Contains("Architecture: 64 Bit")) {
-                $currentBitness = "64-Bit"
-            }
-
-            Write-Host
-            Write-Host "Downloading Bitness : $currentBitness"
-            <# write log#>
-            $lineNum = Get-CurrentLineNumber    
-            $filName = Get-CurrentFileName 
-            WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Downloading Bitness : $currentBitness"
-
-            #loop for each branch
-            $BranchesOrChannels | %{
-                $currentBranch = $_
-                $b++
-
-                Write-Progress -id 1 -Activity "Downloading Channel" -status "Channel: $($currentBranch.ToString()) : $currentBitness" -percentComplete ($b / $BranchCount *100) 
-                Write-Host "`tDownloading Channel: $currentBranch"
-                <# write log#>
-                $lineNum = Get-CurrentLineNumber    
-                $filName = Get-CurrentFileName 
-                WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Downloading Channel: $currentBranch"
-
-                $FolderName = $($_.ToString())
-
-                if ($UseChannelFolderShortName) {
-                   $FolderName = ConvertChannelNameToShortName -ChannelName $FolderName  
-                }
-       
-                $baseURL = $CurrentVersionXML.UpdateFiles.baseURL | ? branch -eq $_.ToString() | %{$_.URL};
-                if(!(Test-Path "$TargetDirectory\$FolderName\")){
-                    New-Item -Path "$TargetDirectory\$FolderName\" -ItemType directory -Force | Out-Null
-                }
-                if(!(Test-Path "$TargetDirectory\$FolderName\Office")){
-                    New-Item -Path "$TargetDirectory\$FolderName\Office" -ItemType directory -Force | Out-Null
-                }
-                if(!(Test-Path "$TargetDirectory\$FolderName\Office\Data")){
-                    New-Item -Path "$TargetDirectory\$FolderName\Office\Data" -ItemType directory -Force | Out-Null
-                }
-
-                if([String]::IsNullOrWhiteSpace($Version)){
-                    #get base .cab to get current version
-                    $baseCabFile = $CurrentVersionXML.UpdateFiles.File | ? rename -ne $null
-                    $url = "$baseURL$($baseCabFile.relativePath)$($baseCabFile.rename)"
-                    $destination = "$TargetDirectory\$FolderName\Office\Data\$($baseCabFile.rename)"
-
-                    DownloadFile -url $url -targetFile $destination
-
-                    expand $destination $env:TEMP -f:"VersionDescriptor.xml" | Out-Null
-                    $baseCabFileName = $env:TEMP + "\VersionDescriptor.xml"
-                    [xml]$vdxml = Get-Content $baseCabFileName
-                    $currentVersion = $vdxml.Version.Available.Build;
-                    Remove-Item -Path $baseCabFileName
-                }else{
-                    $currentVersion = $Version
-
-                    $relativePath = $_.relativePath -replace "`%version`%", $currentVersion
-                    $fileName = "/Office/Data/v32_$currentVersion.cab"
-                    $url = "$baseURL$relativePath$fileName"
-
-                    try {
-                        Invoke-WebRequest -Uri $url -ErrorAction Stop | Out-Null
-                    } catch {
-                      Write-Host "`t`tVersion Not Found: $currentVersion"
-                      <# write log#>
-                        $lineNum = Get-CurrentLineNumber    
-                        $filName = Get-CurrentFileName 
-                        WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Version Not Found: $currentVersion"
-                      return 
-                    }
-                }
-
-                if(!(Test-Path "$TargetDirectory\$FolderName\Office\Data\$currentVersion")){
-                    New-Item -Path "$TargetDirectory\$FolderName\Office\Data\$currentVersion" -ItemType directory -Force | Out-Null
-                }
-				if(!(Test-Path "$TargetDirectory\$FolderName\Office\Data\$currentVersion\Experiment")){
-                     New-Item -Path "$TargetDirectory\$FolderName\Office\Data\$currentVersion\Experiment" -ItemType directory -Force | Out-Null
- 				}
-
-                
-                if(!(Test-Path "$TargetDirectory\$FolderName\Office\Data\$currentVersion\Experiment")){
-                    New-Item -Path "$TargetDirectory\$FolderName\Office\Data\$currentVersion\Experiment" -ItemType directory -Force | Out-Null
-                }
-                $numberOfFiles = 0
-                $j = 0
-
-                $CurrentVersionXML.UpdateFiles.File | ? language -eq "0" | 
-                %{
-                   $numberOfFiles ++
-                }
-
-                $Languages | 
-                %{
-                    #LANGUAGE LOGIC HERE
-                    $languageId  = [globalization.cultureinfo]::GetCultures("allCultures") | ? Name -eq $_ | %{$_.LCID}
-                    $CurrentVersionXML.UpdateFiles.File | ? language -eq $languageId | 
-                            %{
-                   $numberOfFiles ++
-                }
-                }
-
-
-                #basic files
-                $CurrentVersionXML.UpdateFiles.File | ? language -eq "0" | 
-                %{
-                    $name = $_.name -replace "`%version`%", $currentVersion
-                    $relativePath = $_.relativePath -replace "`%version`%", $currentVersion
-                    $url = "$baseURL$relativePath$name"
-                    $fileType = $name.split('.')[$name.split['.'].Count - 1]
-                    $bitnessValue = $currentBitness.split('-')[0].ToString()
-                    $destination = "$TargetDirectory\$FolderName$relativePath$name"
-                               
-                    for( $retryCount = 0; $retryCount -lt 3;  $retryCount++) {
-                        try {
-
-                            if (!(Test-Path -Path $destination) -or $OverWrite ) { 
-                               DownloadFile -url $url -targetFile $destination
-                     
-                               if($fileType -eq 'dat')
-                               {                                   
-                                   $hashFileName = $name.replace("dat","hash")
-                                   $cabFile = "$TargetDirectory\$FolderName"+$relativePath.Replace('/','\')+"s"+$bitnessValue+"0.cab"
-                                   $noneHashLocation = $CurrentVersionXML.UpdateFiles.File | ? name -eq $name |%{$_.hashLocation}                    
-                                   expand $cabFile f:* $env:Temp\ | Out-Null
-                                   
-                                   $fileHash = Get-FileHash $destination.replace('/','\')
-                                   $providedHash = Get-Content $env:Temp\$hashFileName
-
-                                   if($fileHash.hash -ne $providedHash)
-                                   {
-                                    throw;
-                                   }
-                                    else{
-                                        break;
-                                   }           
-                               }
-                           }
-                        }
-                        catch{
-                            $OverWrite = $true 
-                            if ($retryCount -eq 2) {
-                                    throw "$name file hash is not correct" 
-                                }        
-                        }
-                    }
-
-                    $j = $j + 1
-                    Write-Progress -id 2 -ParentId 1 -Activity "Downloading Channel Files" -status "Channel: $($currentBranch.ToString())" -percentComplete ($j / $numberOfFiles *100)
-                }
-
-                #language files
-                $Languages | 
-                %{
-                    #LANGUAGE LOGIC HERE
-                    $languageId  = [globalization.cultureinfo]::GetCultures("allCultures") | ? Name -eq $_ | %{$_.LCID}
-					$bitnessValue = $currentBitness.split('-')[0].ToString()
-                    $CurrentVersionXML.UpdateFiles.File | ? language -eq $languageId | 
-
-                    %{
-                    
-                    $name = $_.name -replace "`%version`%", $currentVersion                    
-                    for( $retryCount = 0; $retryCount -lt 3;  $retryCount++) {
-                            try {
-                        
-                            $fileType = $name.split('.')[$name.split['.'].Count - 1]
-                            $relativePath = $_.relativePath -replace "`%version`%", $currentVersion
-                            $url = "$baseURL$relativePath$name"
-                            $destination = "$TargetDirectory\$FolderName"+$relativePath.replace('/','\')+"$name"
-                     
-
-                            if (!(Test-Path -Path $destination) -or $OverWrite) {
-                               DownloadFile -url $url -targetFile $destination
-
-                               if($fileType -eq 'dat'){
-                                    $cabFile = "s$bitnessValue$languageId.cab"
-                                    $hashFile = $name.replace('dat','hash')
-                                    expand "$TargetDirectory\$FolderName$relativePath$cabfile" f:* $env:Temp\ | Out-Null
-
-                                    $fileHash = Get-FileHash $destination
-                                    $providedHash = Get-Content $env:TEMP\$hashFile
-
-                                    if($fileHash.hash -ne $providedHash){
-                                        throw;
-                                    }
-                                    else{
-                                        break;
-                                    }
-                               }
-                            }
-                            }
-                            catch{
-                            $OverWrite = $true 
-                                if ($retryCount -eq 2) {
-                                     throw "$name file hash is not correct" 
-                            }
-                            }
-                        }
-
-                        $j = $j + 1
-                        Write-Progress -id 2 -ParentId 1 -Activity "Downloading Channel Files" -status "Channel: $($currentBranch.ToString())" -percentComplete ($j / $numberOfFiles *100)
-                    }
-                }
-
-
-            }
-
-        }
-
-    }
-    catch 
-    {
-        #if download fails, displays error, continues loop
-        $errorMessage = $computer + ": " + $_
-        Write-Host $errorMessage -ForegroundColor White -BackgroundColor Red
-        $downloadSuccess = $FALSE;
-        $fileName = $_.InvocationInfo.ScriptName.Substring($_.InvocationInfo.ScriptName.LastIndexOf("\")+1)
-        WriteToLogFile -LNumber $_.InvocationInfo.ScriptLineNumber -FName $fileName -ActionError $_
-    }
-
-    if($downloadSuccess){#if download succeeds, breaks out of loop
-        break
-    }
-
-}#end of for loop
-
-PurgeOlderVersions $TargetDirectory $NumVersionsToKeep $BranchesOrChannels
-
-}
-
-Function Configure-GPOOfficeInstallation {
     [CmdletBinding(SupportsShouldProcess=$true)]
     Param
     (
-	    [Parameter(Mandatory=$True)]
-	    [string]$GroupPolicyName,
-	
-	    [Parameter(Mandatory=$True)]
-	    [string]$UncPath,
-	
-	    [Parameter()]
-	    [string]$ConfigFileName = "configuration.xml",
-        
         [Parameter()]
-        [string]$ScriptName = "Install-OfficeClickToRun.ps1"
+        [OfficeChannel[]] $Channels = @(1,2,3),
+
+        [Parameter(Mandatory=$true)]
+	    [String]$OfficeFilesPath = $NULL,
+
+        [Parameter()]
+        [ValidateSet("en-us","ar-sa","bg-bg","zh-cn","zh-tw","hr-hr","cs-cz","da-dk","nl-nl","et-ee","fi-fi","fr-fr","de-de","el-gr","he-il","hi-in","hu-hu","id-id","it-it",
+                    "ja-jp","kk-kz","ko-kr","lv-lv","lt-lt","ms-my","nb-no","pl-pl","pt-br","pt-pt","ro-ro","ru-ru","sr-latn-rs","sk-sk","sl-si","es-es","sv-se","th-th",
+                    "tr-tr","uk-ua","vi-vn")]
+        [string[]] $Languages = ("en-us"),
+
+        [Parameter()]
+        [Bitness] $Bitness = 0,
+
+        [Parameter()]
+        [string] $Version = $NULL
+        
+    )
+
+    Process {
+       if (Test-Path "$PSScriptRoot\Download-OfficeProPlusChannels.ps1") {
+         . "$PSScriptRoot\Download-OfficeProPlusChannels.ps1"
+       } else {
+       <# write log#>
+        $lineNum = Get-CurrentLineNumber    
+        $filName = Get-CurrentFileName 
+        WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Dependency file missing: $PSScriptRoot\Download-OfficeProPlusChannels.ps1"
+         throw "Dependency file missing: $PSScriptRoot\Download-OfficeProPlusChannels.ps1"
+       }
+
+       $ChannelList = @("FirstReleaseCurrent", "Current", "FirstReleaseDeferred", "Deferred")
+       $ChannelXml = Get-ChannelXml -FolderPath $OfficeFilesPath -OverWrite $true
+
+       foreach ($Channel in $ChannelList) {
+         if ($Channels -contains $Channel) {
+
+            $selectChannel = $ChannelXml.UpdateFiles.baseURL | Where {$_.branch -eq $Channel.ToString() }
+            $latestVersion = Get-ChannelLatestVersion -ChannelUrl $selectChannel.URL -Channel $Channel
+            $ChannelShortName = ConvertChannelNameToShortName -ChannelName $Channel
+
+            if ($Version) {
+               $latestVersion = $Version
+            }
+
+            Download-OfficeProPlusChannels -TargetDirectory $OfficeFilesPath  -Channels $Channel -Version $latestVersion -UseChannelFolderShortName $true -Languages $Languages -Bitness $Bitness
+
+            $cabFilePath = "$env:TEMP/ofl.cab"
+            Copy-Item -Path $cabFilePath -Destination "$OfficeFilesPath\ofl.cab" -Force
+
+            $latestVersion = Get-ChannelLatestVersion -ChannelUrl $selectChannel.URL -Channel $Channel -FolderPath $OfficeFilesPath -OverWrite $true 
+         }
+       }
+    }
+}
+
+Function Configure-GPOOfficeDeployment {
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    Param
+    (      
+        [Parameter()]
+        [OfficeChannel]$Channel,
+
+        [Parameter()]
+        [Bitness]$Bitness = "v32",
+
+        [Parameter()]
+	    [string]$OfficeSourceFilesPath,
+
+        [Parameter()]
+        [string]$MoveSourceFiles = $true
     )
 
     Begin
@@ -431,6 +174,129 @@ Function Configure-GPOOfficeInstallation {
     }
 
     Process 
+    {
+        Try{
+            $cabFilePath = "$OfficeSourceFilesPath\ofl.cab"
+            if(Test-Path $cabFilePath){
+                Copy-Item -Path $cabFilePath -Destination "$PSScriptRoot\ofl.cab" -Force
+            }
+
+            $ChannelXml = Get-ChannelXml -FolderPath $OfficeSourceFilesPath -OverWrite $false
+           
+            $selectChannel = $ChannelXml.UpdateFiles.baseURL | Where {$_.branch -eq $Channel.ToString() }
+            $latestVersion = Get-ChannelLatestVersion -ChannelUrl $selectChannel.URL -Channel $Channel -FolderPath $OfficeFilesPath -OverWrite $false
+        
+            $ChannelShortName = ConvertChannelNameToShortName -ChannelName $Channel
+            $LargeDrv = Get-LargestDrive
+        
+            $Path = CreateOfficeChannelShare -Path "$LargeDrv\OfficeDeployment"
+        
+            #$packageName = "Office 365 ProPlus"
+            $ChannelPath = "$Path\$Channel"
+            $LocalPath = "$LargeDrv\OfficeDeployment"
+            $LocalChannelPath = "$LargeDrv\OfficeDeployment\SourceFiles"
+        
+            [System.IO.Directory]::CreateDirectory($LocalChannelPath) | Out-Null
+                   
+            if($OfficeSourceFilesPath) {
+                $officeFileChannelPath = "$OfficeSourceFilesPath\$ChannelShortName"
+                $officeFileTargetPath = "$LocalChannelPath"
+
+                [string]$oclVersion = $NULL
+                if ($officeFileChannelPath) {
+                    if (Test-Path -Path "$officeFileChannelPath\Office\Data") {
+                       $oclVersion = Get-LatestVersion -UpdateURLPath $officeFileChannelPath
+                    }
+                }
+
+                if ($oclVersion) {
+                   $latestVersion = $oclVersion
+                }
+
+                if (!(Test-Path -Path $officeFileChannelPath)) {
+                    <# write log#>
+                    $lineNum = Get-CurrentLineNumber    
+                    $filName = Get-CurrentFileName 
+                    WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Channel Folder Missing: $officeFileChannelPath - Ensure that you have downloaded the Channel you are trying to deploy"
+                    throw "Channel Folder Missing: $officeFileChannelPath - Ensure that you have downloaded the Channel you are trying to deploy"
+                }
+
+                [System.IO.Directory]::CreateDirectory($officeFileTargetPath) | Out-Null
+
+                if ($MoveSourceFiles) {
+                    Move-Item -Path $officeFileChannelPath -Destination $officeFileTargetPath -Force
+                } else {
+                    Copy-Item -Path $officeFileChannelPath -Destination $officeFileTargetPath -Recurse -Force
+                }
+
+                $cabFilePath = "$OfficeSourceFilesPath\ofl.cab"
+                if (Test-Path $cabFilePath) {
+                    Copy-Item -Path $cabFilePath -Destination "$LocalPath\ofl.cab" -Force
+                }
+            } else {
+                if(Test-Path -Path "$LocalChannelPath\Office") {
+                    Remove-Item -Path "$LocalChannelPath\Office" -Force -Recurse
+                }
+            }
+        
+            $cabFilePath = "$env:TEMP/ofl.cab"
+            if(!(Test-Path $cabFilePath)) {
+                Copy-Item -Path "$LocalPath\ofl.cab" -Destination $cabFilePath -Force
+            }
+
+            CreateMainCabFiles -LocalPath $LocalPath -ChannelShortName $ChannelShortName -LatestVersion $latestVersion
+
+            $DeploymentFilePath = "$PSSCriptRoot\DeploymentFiles\*.*"
+            if (Test-Path -Path $DeploymentFilePath) {
+                Copy-Item -Path $DeploymentFilePath -Destination "$LocalPath" -Force -Recurse
+            } else {
+                <# write log#>
+                $lineNum = Get-CurrentLineNumber    
+                $filName = Get-CurrentFileName 
+                WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Deployment folder missing: $DeploymentFilePath"
+                throw "Deployment folder missing: $DeploymentFilePath"
+            }
+        } Catch{}
+    }        
+}
+
+Function Create-GPOOfficeDeployment {
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    Param
+    (
+	    [Parameter(Mandatory=$True)]
+	    [string]$GroupPolicyName,
+	
+        [Parameter()]
+	    [GPODeploymentType]$DeploymentType = 0,
+        
+        [Parameter()]
+        [string]$ScriptName = "GPO-OfficeDeploymentScript.ps1" ,
+              
+        [Parameter()]
+        [OfficeChannel]$Channel,
+
+        [Parameter()]
+        [Bitness]$Bitness,
+
+        [Parameter()]
+        [string]$ConfigurationXML = $null,
+
+        [Parameter()]
+        [bool]$WaitForInstallToFinish = $true,
+
+        [Parameter()]
+        [bool]$InstallProofingTools = $false
+    )
+
+    Begin
+    {
+	    $currentExecutionPolicy = Get-ExecutionPolicy
+	    Set-ExecutionPolicy Unrestricted -Scope Process -Force  
+        $startLocation = Get-Location        
+    }
+
+    Process
     {
         $Root = [ADSI]"LDAP://RootDSE"
         $DomainPath = $Root.Get("DefaultNamingContext")
@@ -456,7 +322,6 @@ Function Configure-GPOOfficeInstallation {
             $filName = Get-CurrentFileName 
             WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "The GPO $GroupPolicyName could not be found."
 		    Write-Error "The GPO $GroupPolicyName could not be found."
-		    Exit
 	    }
 
         Write-Host "GPO Found"
@@ -577,10 +442,28 @@ Function Configure-GPOOfficeInstallation {
 	    {
 		    $newContent[$i] = $content[$i]
 	    }
+                      
+        if($DeploymentType -eq "DeployWithConfigurationFile"){
+            $ScriptName = "DeployConfigFile.ps1"
+            $newContent[$nextIndex+1] = "{0}CmdLine={1}" -f $nextScriptIndex, $ScriptName
 
-	    $newContent[$nextIndex+1] = "{0}CmdLine={1}" -f $nextScriptIndex, $ScriptName
-
-	    $newContent[$nextIndex+2] = "{0}Parameters=-UncPath {1} -ConfigFileName {2}" -f $nextScriptIndex, $UncPath, $ConfigFileName
+            if($WaitForInstallToFinish -eq $false){
+	            $newContent[$nextIndex+2] = "{0}Parameters=-ConfigurationXML {1} -WaitForInstallToFinish {2}" -f $nextScriptIndex, $ConfigurationXML, $WaitForInstallToFinish
+                if($InstallProofingTools -eq $true){
+                    $newContent[$nextIndex+2] = "{0}Parameters=-ConfigurationXML {1} -WaitForInstallToFinish {2} -InstallProofingTools {3}" -f $nextScriptIndex, $ConfigurationXML, $WaitForInstallToFinish, $InstallProofingTools
+                }
+            } else {
+                if($InstallProofingTools -eq $true){
+                    $newContent[$nextIndex+2] = "{0}Parameters=-ConfigurationXML {1} -InstallProofingTools {2}" -f $nextScriptIndex, $ConfigurationXML, $InstallProofingTools
+                } else {
+                    $newContent[$nextIndex+2] = "{0}Parameters=-ConfigurationXML {1}" -f $nextScriptIndex, $ConfigurationXML
+                }
+            }
+        } elseif ($DeploymentType -eq "DeployWithScript") {
+            $SourceFileFolder = "SourceFiles"
+            $newContent[$nextIndex+1] = "{0}CmdLine={1}" -f $nextScriptIndex, $ScriptName
+            $newContent[$nextIndex+2] = "{0}Parameters=-Channel {1} -Bitness {2} -SourceFileFolder {3}" -f $nextScriptIndex, $Channel, $Bitness, $SourceFileFolder
+        }
 
 	    for($i=$nextIndex; $i -lt $length; $i++)
 	    {
@@ -591,7 +474,8 @@ Function Configure-GPOOfficeInstallation {
 	    #endregion
 	
 	    #region Place the script to attach in the StartUp Folder
-	    $setupExeSourcePath = "$startLocation\$ScriptName"
+        $LargeDrv = Get-LargestDrive 
+	    $setupExeSourcePath = "$LargeDrv\OfficeDeployment\$ScriptName"
 	    $setupExeTargetPath = "$scriptsPath\StartUp"
         $setupExeTargetPathShutdown = "$scriptsPath\ShutDown"
 
@@ -909,6 +793,396 @@ function ConvertBranchNameToChannelName {
     }
 }
 
+
+function UpdateConfigurationXml() {
+    [CmdletBinding()]	
+    Param
+	(
+		[Parameter(Mandatory=$true)]
+		[String]$Path = "",
+
+		[Parameter(Mandatory=$true)]
+		[String]$Channel = "",
+
+		[Parameter(Mandatory=$true)]
+		[String]$Bitness,
+
+		[Parameter()]
+		[String]$SourcePath = $NULL,
+		
+        [Parameter()]
+		[String]$Language
+        
+	) 
+    Process {
+	  $doc = [Xml] (Get-Content $Path)
+
+      $addNode = $doc.Configuration.Add
+      $languageNode = $addNode.Product.Language
+
+      if ($addNode.OfficeClientEdition) {
+          $addNode.OfficeClientEdition = $Bitness
+      } else {
+          $addNode.SetAttribute("OfficeClientEdition", $Bitness)
+      }
+
+      if ($addNode.Channel) {
+          $addNode.Channel = $Channel
+      } else {
+          $addNode.SetAttribute("Channel", $Channel)
+      }
+
+      if ($addNode.SourcePath) {
+          $addNode.SourcePath = $SourcePath
+      } else {
+          $addNode.SetAttribute("SourcePath", $SourcePath)
+      }
+
+      if($Language){
+          if ($languageNode.ID){
+              if($languageNode.ID -contains $Language) {
+                  Write-Host "$Language already exists in the xml"
+                  <# write log#>
+                $lineNum = Get-CurrentLineNumber    
+                $filName = Get-CurrentFileName 
+                WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "$Language already exists in the xml"
+              } else {
+                  $newLanguageElement = $doc.CreateElement("Language")
+                  $newLanguage = $doc.Configuration.Add.Product.AppendChild($newLanguageElement)
+                  $newLanguage.SetAttribute("ID", $Language)
+              }
+          } else {
+              $languageNode.SetAttribute("ID", $language)
+          }
+     }
+
+      $doc.Save($Path)
+    }
+}
+
+function CreateMainCabFiles() {
+    [CmdletBinding()]	
+    Param
+	(
+		[Parameter(Mandatory=$true)]
+		[String]$LocalPath = "",
+
+        [Parameter(Mandatory=$true)]
+        [String] $ChannelShortName,
+
+        [Parameter(Mandatory=$true)]
+        [String] $LatestVersion
+	) 
+    Process {
+        $versionFile321 = "$LocalPath\$ChannelShortName\Office\Data\v32_$LatestVersion.cab"
+        $v32File1 = "$LocalPath\$ChannelShortName\Office\Data\v32.cab"
+
+        $versionFile641 = "$LocalPath\$ChannelShortName\Office\Data\v64_$LatestVersion.cab"
+        $v64File1 = "$LocalPath\$ChannelShortName\Office\Data\v64.cab"
+
+        $versionFile322 = "$LocalPath\SourceFiles\$ChannelShortName\Office\Data\v32_$LatestVersion.cab"
+        $v32File2 = "$LocalPath\SourceFiles\$ChannelShortName\Office\Data\v32.cab"
+
+        $versionFile642 = "$LocalPath\SourceFiles\$ChannelShortName\Office\Data\v64_$LatestVersion.cab"
+        $v64File2 = "$LocalPath\SourceFiles\$ChannelShortName\Office\Data\v64.cab"
+
+        if (Test-Path -Path $versionFile321) {
+            Copy-Item -Path $versionFile321 -Destination $v32File1 -Force
+        }
+
+        if (Test-Path -Path $versionFile641) {
+            Copy-Item -Path $versionFile641 -Destination $v64File1 -Force
+        }
+
+        if (Test-Path -Path $versionFile322) {
+            Copy-Item -Path $versionFile322 -Destination $v32File2 -Force
+        }
+
+        if (Test-Path -Path $versionFile642) {
+            Copy-Item -Path $versionFile642 -Destination $v64File2 -Force
+        }
+    }
+}
+
+function CheckIfVersionExists() {
+    [CmdletBinding()]	
+    Param
+	(
+	   [Parameter(Mandatory=$True)]
+	   [String]$Version,
+
+		[Parameter()]
+		[String]$Channel
+    )
+    Begin
+    {
+        $startLocation = Get-Location
+    }
+    Process {
+       LoadCMPrereqs
+
+       $VersionName = "$Channel - $Version"
+
+       $packageName = "Office 365 ProPlus"
+
+       $existingPackage = Get-CMPackage | Where { $_.Name -eq $packageName -and $_.Version -eq $Version }
+       if ($existingPackage) {
+         return $true
+       }
+
+       return $false
+    }
+}
+
+function CreateOfficeChannelShare() {
+    [CmdletBinding()]	
+    Param
+	(
+        [Parameter()]
+        [String]$Name = "OfficeDeployment$",
+
+        [Parameter()]
+        [String]$Path = "$env:SystemDrive\OfficeDeployment"
+	) 
+    
+    if (!(Test-Path $Path)) { 
+      $addFolder = New-Item $Path -type Directory 
+    }
+    
+    $ACL = Get-ACL $Path
+
+    $identity = New-Object System.Security.Principal.NTAccount  -argumentlist ("$env:UserDomain\$env:UserName") 
+    $accessRule = New-Object System.Security.AccessControl.FileSystemAccessRule -argumentlist ($identity,"FullControl","ContainerInherit, ObjectInherit","None","Allow")
+
+    $addAcl = $ACL.AddAccessRule($accessRule) | Out-Null
+
+    $identity = New-Object System.Security.Principal.NTAccount -argumentlist ("$env:UserDomain\Domain Admins") 
+    $accessRule = New-Object System.Security.AccessControl.FileSystemAccessRule -argumentlist ($identity,"FullControl","ContainerInherit, ObjectInherit","None","Allow")
+    $addAcl = $ACL.AddAccessRule($accessRule) | Out-Null
+
+    $identity = "Everyone"
+    $accessRule = New-Object System.Security.AccessControl.FileSystemAccessRule -argumentlist ($identity,"Read","ContainerInherit, ObjectInherit","None","Allow")
+    $addAcl = $ACL.AddAccessRule($accessRule) | Out-Null
+
+    Set-ACL -Path $Path -ACLObject $ACL | Out-Null
+    
+    $share = Get-WmiObject -Class Win32_share | Where {$_.name -eq "$Name"}
+    if (!$share) {
+       Create-FileShare -Name $Name -Path $Path | Out-Null
+    }
+
+    $sharePath = "\\$env:COMPUTERNAME\$Name"
+    return $sharePath
+}
+
+function GetSupportedPlatforms([String[]] $requiredPlatformNames){
+    $computerName = $env:COMPUTERNAME
+    #$assignedSite = $([WmiClass]"\\$computerName\ROOT\ccm:SMS_Client").getassignedsite()
+    $siteCode = Get-Site  
+    $filteredPlatforms = Get-WmiObject -ComputerName $computerName -Class SMS_SupportedPlatforms -Namespace "root\sms\site_$siteCode" | Where-Object {$_.IsSupported -eq $true -and  $_.OSName -like 'Win NT' -and ($_.OSMinVersion -match "6\.[0-9]{1,2}\.[0-9]{1,4}\.[0-9]{1,4}" -or $_.OSMinVersion -match "10\.[0-9]{1,2}\.[0-9]{1,4}\.[0-9]{1,4}") -and ($_.OSPlatform -like 'I386' -or $_.OSPlatform -like 'x64')}
+
+    $requiredPlatforms = $filteredPlatforms| Where-Object {$requiredPlatformNames.Contains($_.DisplayText) } #| Select DisplayText, OSMaxVersion, OSMinVersion, OSName, OSPlatform | Out-GridView
+
+    $supportedPlatforms = @()
+
+    foreach($p in $requiredPlatforms)
+    {
+        $osDetail = ([WmiClass]("\\$computerName\root\sms\site_$siteCode`:SMS_OS_Details")).CreateInstance()    
+        $osDetail.MaxVersion = $p.OSMaxVersion
+        $osDetail.MinVersion = $p.OSMinVersion
+        $osDetail.Name = $p.OSName
+        $osDetail.Platform = $p.OSPlatform
+
+        $supportedPlatforms += $osDetail
+    }
+
+    $supportedPlatforms
+}
+
+function CreateDownloadXmlFile([string]$Path, [string]$ConfigFileName){
+	#1 - Set the correct version number to update Source location
+	$sourceFilePath = "$path\$configFileName"
+    $localSourceFilePath = ".\$configFileName"
+
+    Set-Location $PSScriptRoot
+
+    if (Test-Path -Path $localSourceFilePath) {   
+	  $doc = [Xml] (Get-Content $localSourceFilePath)
+
+      $addNode = $doc.Configuration.Add
+	  $addNode.OfficeClientEdition = $bitness
+
+      $doc.Save($sourceFilePath)
+    } else {
+      $doc = New-Object System.XML.XMLDocument
+
+      $configuration = $doc.CreateElement("Configuration");
+      $a = $doc.AppendChild($configuration);
+
+      $addNode = $doc.CreateElement("Add");
+      $addNode.SetAttribute("OfficeClientEdition", $bitness)
+      if ($Version) {
+         if ($Version.Length -gt 0) {
+             $addNode.SetAttribute("Version", $Version)
+         }
+      }
+      $a = $doc.DocumentElement.AppendChild($addNode);
+
+      $addProduct = $doc.CreateElement("Product");
+      $addProduct.SetAttribute("ID", "O365ProPlusRetail")
+      $a = $addNode.AppendChild($addProduct);
+
+      $addLanguage = $doc.CreateElement("Language");
+      $addLanguage.SetAttribute("ID", "en-us")
+      $a = $addProduct.AppendChild($addLanguage);
+
+	  $doc.Save($sourceFilePath)
+    }
+}
+
+function CreateUpdateXmlFile([string]$Path, [string]$ConfigFileName, [string]$Bitness, [string]$Version){
+    $newConfigFileName = $ConfigFileName -replace '\.xml'
+    $newConfigFileName = $newConfigFileName + "$Bitness" + ".xml"
+
+    Copy-Item -Path ".\$ConfigFileName" -Destination ".\$newConfigFileName"
+    $ConfigFileName = $newConfigFileName
+
+    $testGroupFilePath = "$path\$ConfigFileName"
+    $localtestGroupFilePath = ".\$ConfigFileName"
+
+	$testGroupConfigContent = [Xml] (Get-Content $localtestGroupFilePath)
+
+	$addNode = $testGroupConfigContent.Configuration.Add
+	$addNode.OfficeClientEdition = $bitness
+    $addNode.SourcePath = $path	
+
+	$updatesNode = $testGroupConfigContent.Configuration.Updates
+	$updatesNode.UpdatePath = $path
+	$updatesNode.TargetVersion = $version
+
+	$testGroupConfigContent.Save($testGroupFilePath)
+    return $ConfigFileName
+}
+
+function DownloadBits() {
+    [CmdletBinding()]	
+    Param
+	(
+	    [Parameter()]
+	    [OfficeBranch]$Branch = $null
+	)
+
+    $DownloadScript = "$PSScriptRoot\Download-OfficeProPlusBranch.ps1"
+    if (Test-Path -Path $DownloadScript) {
+       
+
+
+
+    }
+}
+
+Function GetScriptRoot() {
+ process {
+     [string]$scriptPath = "."
+
+     if ($PSScriptRoot) {
+       $scriptPath = $PSScriptRoot
+     } else {
+       $scriptPath = split-path -parent $MyInvocation.MyCommand.Definition
+     }
+
+     return $scriptPath
+ }
+}
+
+function GetQueryStatus(){
+Param(
+    [string]$SiteCode,
+    [string]$PkgID
+)
+
+    $query = Get-WmiObject –NameSpace Root\SMS\Site_$SiteCode –Class SMS_DistributionDPStatus –Filter "PackageID='$PkgID'" | Select Name, MessageID, MessageState, LastUpdateDate
+
+    if ($query -eq $null)
+    {  
+    <# write log#>
+        $lineNum = Get-CurrentLineNumber    
+        $filName = Get-CurrentFileName 
+        WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "PackageID not found"
+        throw "PackageID not found"
+    }
+
+    foreach ($objItem in $query){
+
+        $DPName = $objItem.Name
+        $UpdDate = [System.Management.ManagementDateTimeconverter]::ToDateTime($objItem.LastUpdateDate)
+
+        switch ($objItem.MessageState)
+        {
+            1         {$Status = "Success"}
+            2         {$Status = "In Progress"}
+            3         {$Status = "Failed"}
+            4         {$Status = "Error"}
+        }
+
+        switch ($objItem.MessageID)
+        {
+            2300      {$Message = "Content is beginning to process"}
+            2301      {$Message = "Content has been processed successfully"}
+            2303      {$Message = "Failed to process package"}
+            2311      {$Message = "Distribution Manager has successfully created or updated the package"}
+            2303      {$Message = "Content was successfully refreshed"}
+            2323      {$Message = "Failed to initialize NAL"}
+            2324      {$Message = "Failed to access or create the content share"}
+            2330      {$Message = "Content was distributed to distribution point"}
+            2342      {$Message = "Content is beginning to distribute"}
+            2354      {$Message = "Failed to validate content status file"}
+            2357      {$Message = "Content transfer manager was instructed to send content to Distribution Point"}
+            2360      {$Message = "Status message 2360 unknown"}
+            2370      {$Message = "Failed to install distribution point"}
+            2371      {$Message = "Waiting for prestaged content"}
+            2372      {$Message = "Waiting for content"}
+            2376      {$Message = "Distribution Manager created a snapshot for content"}
+            2380      {$Message = "Content evaluation has started"}
+            2381      {$Message = "An evaluation task is running. Content was added to Queue"}
+            2382      {$Message = "Content hash is invalid"}
+            2383      {$Message = "Failed to validate content hash"}
+            2384      {$Message = "Content hash has been successfully verified"}
+            2391      {$Message = "Failed to connect to remote distribution point"}
+            2397      {$Message = "Detail will be available after the server finishes processing the messages"}
+            2398      {$Message = "Content Status not found"}
+            8203      {$Message = "Failed to update package"}
+            8204      {$Message = "Content is being distributed to the distribution Point"}
+            8211      {$Message = "Failed to update package"}
+        }
+
+        $Displayvalue = showTaskStatus -Operation $Status -Status $Message -DateTime $UpdDate
+
+    }
+
+    return $Displayvalue
+}
+
+function showTaskStatus() {
+    [CmdletBinding()]
+    Param(
+        [Parameter()]
+        [string] $Operation = "",
+
+        [Parameter()]
+        [string] $Status = "",
+
+        [Parameter()]
+        [string] $DateTime = ""
+    )
+
+    $Result = New-Object –TypeName PSObject 
+    Add-Member -InputObject $Result -MemberType NoteProperty -Name "Operation" -Value $Operation
+    Add-Member -InputObject $Result -MemberType NoteProperty -Name "Status" -Value $Status
+    Add-Member -InputObject $Result -MemberType NoteProperty -Name "DateTime" -Value $DateTime
+    return $Result
+}
+
 function Get-CurrentLineNumber {
     $MyInvocation.ScriptLineNumber
 }
@@ -949,3 +1223,18 @@ Function WriteToLogFile() {
         WriteToLogFile -LNumber $_.InvocationInfo.ScriptLineNumber -FName $fileName -ActionError $_
     }
 }
+
+$scriptPath = GetScriptRoot
+
+$shareFunctionsPath = "$scriptPath\SharedFunctions.ps1"
+if ($scriptPath.StartsWith("\\")) {
+} else {
+    if (!(Test-Path -Path $shareFunctionsPath)) {
+    <# write log#>
+        $lineNum = Get-CurrentLineNumber    
+        $filName = Get-CurrentFileName 
+        WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Missing Dependency File SharedFunctions.ps1"    
+        throw "Missing Dependency File SharedFunctions.ps1"    
+    }
+}
+. $shareFunctionsPath
