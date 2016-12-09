@@ -1,12 +1,12 @@
 Param(
     [Parameter()]
+    [string]$OfficeDeploymentPath,
+
+    [Parameter()]
     [string]$Channel = $null,
 
     [Parameter()]
     [string]$Bitness = "32",
-
-    [Parameter()]
-    [string]$SourceFileFolder = "SourceFiles",
 
     [Parameter()]
     [string]$Languages,
@@ -19,17 +19,13 @@ Param(
 )
 
 #  Deploy Office 365 ProPlus using Group Policy
+Begin {
+    Set-Location $OfficeDeploymentPath
+}
 
 Process {
+ $scriptPath = "."
  $targetFilePath = "$env:temp\configuration.xml"
-
- [string]$scriptPath = "."
-
- if ($PSScriptRoot) {
-    $scriptPath = $PSScriptRoot
- } else {
-   $scriptPath = (Get-Item -Path ".\").FullName
- }
 
  if (Get-OfficeC2RVersion) { Write-Host "Office 365 ProPlus Already Installed" }
 
@@ -39,15 +35,13 @@ Process {
  . $scriptPath\Install-OfficeClickToRun.ps1
  . $scriptPath\SharedFunctions.ps1
 
- $SourcePath = $scriptPath
+ $ChannelShortName = ConvertChannelNameToShortName -ChannelName $Channel
+ $SourcePath = $OfficeDeploymentPath + "\SourceFiles\" + $ChannelShortName
  if((Validate-UpdateSource -UpdateSource $SourcePath -ShowMissingFiles $false) -eq $false) {
     $SourcePath = $NULL    
- } else {
-    $ChannelShortName = ConvertChannelNameToShortName -ChannelName $Channel
-    $SourcePath = $SourcePath + "\" + $SourceFileFolder + "\" + $ChannelShortName
- }
+ } 
 
- $UpdateURLPath = Locate-UpdateSource -Channel $Channel -UpdateURLPath $scriptPath -SourceFileFolder $SourceFileFolder
+ $UpdateURLPath = Locate-UpdateSource -Channel $Channel -UpdateURLPath $SourcePath -SourceFileFolder SourceFiles
  Generate-ODTConfigurationXml -Languages AllInUseLanguages -TargetFilePath $targetFilePath | Set-ODTAdd -Sourcepath $SourcePath -Version $NULL -Channel $Channel | Set-ODTUpdates -Channel $Channel -UpdatePath $UpdateURLPath | Set-ODTDisplay -Level None -AcceptEULA $true  | Out-Null
  Update-ConfigurationXml -TargetFilePath $targetFilePath -UpdateURLPath $UpdateURLPath -Channel $Channel
  
