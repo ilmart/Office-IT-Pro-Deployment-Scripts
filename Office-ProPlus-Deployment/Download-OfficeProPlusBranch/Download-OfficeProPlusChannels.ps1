@@ -82,41 +82,41 @@ https://github.com/OfficeDev/Office-IT-Pro-Deployment-Scripts
 #>
 
 Param(
-    [Parameter()]
-    [string] $Version,
-
     [Parameter(Mandatory=$true)]
-    [string] $TargetDirectory,
+    [string]$TargetDirectory,
+
+    [Parameter()]
+    [OfficeChannel[]]$Channels = (0, 1, 2, 3),
+
+    [Parameter()]
+    [Bitness]$Bitness = 0,
+
+    [Parameter()]
+    [string]$Version,
 
     [Parameter()]
     [ValidateSet("en-us","ar-sa","bg-bg","zh-cn","zh-tw","hr-hr","cs-cz","da-dk","nl-nl","et-ee","fi-fi","fr-fr","de-de","el-gr","he-il","hi-in","hu-hu","id-id","it-it",
                 "ja-jp","kk-kz","ko-kr","lv-lv","lt-lt","ms-my","nb-no","pl-pl","pt-br","pt-pt","ro-ro","ru-ru","sr-latn-rs","sk-sk","sl-si","es-es","sv-se","th-th",
                 "tr-tr","uk-ua","vi-vn")]
-    [string[]] $Languages = ("en-us"),
+    [string[]]$Languages = ("en-us"),
 
     [Parameter()]
-    [Bitness] $Bitness = 0,
+    [int]$NumVersionsToKeep = 2,
 
     [Parameter()]
-    [int] $NumVersionsToKeep = 2,
+    [bool]$UseChannelFolderShortName = $true,
 
     [Parameter()]
-    [bool] $UseChannelFolderShortName = $true,
+    [bool]$OverWrite = $false,
 
     [Parameter()]
-    [bool] $OverWrite = $false,
+    [OfficeBranch[]]$Branches,
 
     [Parameter()]
-    [OfficeBranch[]] $Branches,
+    [int]$NumOfRetries = 5,
 
     [Parameter()]
-    [OfficeChannel[]] $Channels = (0, 1, 2, 3),
-
-    [Parameter()]
-    [int] $NumOfRetries = 5,
-
-    [Parameter()]
-    [bool] $IncludeChannelInfo = $false
+    [bool]$IncludeChannelInfo = $false
 )
 
 $BranchesOrChannels = @()

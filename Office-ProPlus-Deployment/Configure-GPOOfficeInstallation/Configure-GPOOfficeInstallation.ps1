@@ -60,7 +60,7 @@ Add-Type -TypeDefinition $enum -ErrorAction SilentlyContinue
 function Download-GPOOfficeChannelFiles() {
 <#
 .SYNOPSIS
-Downloads the Office Click-to-Run files into the specified folder for package creation.
+Downloads the Office Click-to-Run files into the specified folder.
 
 .DESCRIPTION
 Downloads the Office 365 ProPlus installation files to a specified file path.
@@ -69,7 +69,7 @@ Downloads the Office 365 ProPlus installation files to a specified file path.
 The update channel. Current, Deferred, FirstReleaseDeferred, FirstReleaseCurrent
 
 .PARAMETER OfficeFilesPath
-This is the location where the source files will be downloaded to
+This is the location where the source files will be downloaded.
 
 .PARAMETER Languages
 All office languages are supported in the ll-cc format "en-us"
@@ -81,13 +81,13 @@ Downloads the bitness of Office Click-to-Run "v32, v64, Both"
 You can specify the version to download. 16.0.6868.2062. Version information can be found here https://technet.microsoft.com/en-us/library/mt592918.aspx
 
 .EXAMPLE
-Download-CMOfficeChannelFiles -OfficeFilesPath D:\OfficeChannelFiles
+Download-GPOOfficeChannelFiles -OfficeFilesPath D:\OfficeChannelFiles
 
 .EXAMPLE
-Download-CMOfficeChannelFiles -OfficeFilesPath D:\OfficeChannelFiles -Channels Deferred -Bitness v32
+Download-GPOOfficeChannelFiles -OfficeFilesPath D:\OfficeChannelFiles -Channels Deferred -Bitness v32
 
 .EXAMPLE
-Download-CMOfficeChannelFiles -OfficeFilesPath D:\OfficeChannelFiles -Bitness v32 -Channels Deferred,FirstReleaseDeferred -Languages en-us,es-es,ja-jp
+Download-GPOOfficeChannelFiles -OfficeFilesPath D:\OfficeChannelFiles -Bitness v32 -Channels Deferred,FirstReleaseDeferred -Languages en-us,es-es,ja-jp
 #>
 
     [CmdletBinding(SupportsShouldProcess=$true)]
@@ -150,6 +150,31 @@ Download-CMOfficeChannelFiles -OfficeFilesPath D:\OfficeChannelFiles -Bitness v3
 }
 
 Function Configure-GPOOfficeDeployment {
+<#
+.SYNOPSIS
+Configures an Office deployment using Group Policy
+
+.DESCRIPTION
+Configures the folders and files to deploy Office using Group Policy
+
+.PARAMETER Channel
+The update channel to deploy.
+
+.PARAMETER Bitness
+The architecture of the update channel.
+
+.PARAMETER OfficeSourceFilesPath
+The path to the required deployment files.
+
+.PARAMETER MoveSourceFiles
+By default, the installation files will be moved to the source folder. Set this to $false to copy the installation files.
+
+.EXAMPLE
+Configure-GPOOfficeDeployment -Channel Current -Bitness 64 -OfficeSourceFilesPath D:\OfficeChannelFiles
+
+.EXAMPLE
+Configure-GPOOfficeDeployment -Channel Current -Bitness 64 -OfficeSourceFilesPath D:\OfficeChannelFiles -MoveSourceFiles $false
+#>
     [CmdletBinding(SupportsShouldProcess=$true)]
     Param
     (      
@@ -261,6 +286,48 @@ Function Configure-GPOOfficeDeployment {
 }
 
 Function Create-GPOOfficeDeployment {
+<#
+.SYNOPSIS
+Configures an Office deployment using Group Policy
+
+.DESCRIPTION
+Configures an existing Group Policy Object to deploy Office 365 ProPlus 
+
+.PARAMETER GroupPolicyName
+The name of the Group Policy Object
+
+.PARAMETER DeploymentType
+Choose between DeployWithScript or DeployWithConfigurationFile. DeployWithScript will deploy a dynamic installation
+using the target computer's existing Office installation. DeployWithConfigurationFile will deploy a standard Office installation
+to all of the targeted computers.
+
+.PARAMETER ScriptName
+The name of the deployment script if the DeploymentType is DeployWithScript. If ScriptName is not specified the 
+GPO-OfficeDeploymentScript.ps1 will be used.
+
+.PARAMETER Channel
+The update channel to install.
+
+.PARAMETER Bitness
+The update channel bit to install.
+
+.PARAMETER ConfigurationXML
+The name of a custom (ODT) configuration.xml file if DeploymentTYpe is set to DeployWithConfigurationFile. If you plan on using a custom xml
+for the deployment make sure to copy the file to the DeploymentFiles folder before running Configure-GPOOfficeDeployment, or copy the file
+to OfficeDeployment if Configure-GPOOfficeDeployment has already been ran.
+
+.PARAMETER WaitForInstallToFinish
+While Office is installing PowerShell will remain open until the installation is finished.
+
+.PARAMETER InstallProofingTools
+Set this value to $true to include the Proofing Tools exe with the deployment.
+
+.EXAMPLE 
+Create-GPOOfficeDeployment -GroupPolicyName DeployCurrentChannel64Bit -DeploymentType DeployWithScript -Channel Current -Bitness 64
+
+.EXAMPLE
+Create-GPOOfficeDeployment -GroupPolicyName DeployDeferredChannel32Bit -DeploymentType DeployWithConfigurationFile -Channel Current -Bitness 64 -ConfigurationXML Config-Deferred-32bit.xml
+#>
     [CmdletBinding(SupportsShouldProcess=$true)]
     Param
     (
