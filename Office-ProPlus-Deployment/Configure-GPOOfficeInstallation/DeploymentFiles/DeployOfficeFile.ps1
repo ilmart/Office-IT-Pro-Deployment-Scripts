@@ -14,9 +14,9 @@ Set-Location $OfficeDeploymentPath
 $DeploymentFile = "$OfficeDeploymentPath\$OfficeDeploymentFileName"
 
 if($InstallSilently -eq $true){
-    $args = " /i $DeploymentFile /qn"
+    $arguments = " /i $DeploymentFile /qn"
 } else {
-    $args = " /i $DeploymentFile"
+    $arguments = " /i $DeploymentFile"
 }
 
-[diagnostics.process]::Start("msiexec", $args).WaitForExit()
+Start-Process $arguments

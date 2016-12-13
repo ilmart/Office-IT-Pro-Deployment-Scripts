@@ -51,7 +51,8 @@ using System;
     public enum GPODeploymentType
     {
         DeployWithScript = 0,
-        DeployWithConfigurationFile = 1
+        DeployWithConfigurationFile = 1,
+        DeployWithMSI = 2
     }
 "
 Add-Type -TypeDefinition $enum -ErrorAction SilentlyContinue
@@ -517,9 +518,8 @@ Create-GPOOfficeDeployment -GroupPolicyName DeployDeferredChannel32Bit -Deployme
         $OfficeDeploymentUNC = "\\" + $OfficeDeploymentShare.PSComputerName + "\$OfficeDeploymentName"  
                
         if($DeploymentType -eq "DeployWithConfigurationFile"){
-            $ScriptName = "DeployConfigFile.ps1"
+            if(!$ScriptName){$ScriptName = "DeployConfigFile.ps1"}
             $newContent[$nextIndex+1] = "{0}CmdLine={1}" -f $nextScriptIndex, $ScriptName
-
             if($WaitForInstallToFinish -eq $false){
 	            $newContent[$nextIndex+2] = "{0}Parameters=-OfficeDeploymentPath {1} -ConfigurationXML {2} -WaitForInstallToFinish {3} -Channel {4} -Bitness {5}" -f $nextScriptIndex, $OfficeDeploymentUNC, $ConfigurationXML, $WaitForInstallToFinish, $Channel, $Bitness
                 if($InstallProofingTools -eq $true){
@@ -533,10 +533,13 @@ Create-GPOOfficeDeployment -GroupPolicyName DeployDeferredChannel32Bit -Deployme
                 }
             }
         } elseif ($DeploymentType -eq "DeployWithScript") {
-            $SourceFileFolder = "SourceFiles"
+            if(!$ScriptName){$ScriptName = "GPO-OfficeDeploymentScript.ps1"}
             $newContent[$nextIndex+1] = "{0}CmdLine={1}" -f $nextScriptIndex, $ScriptName
-
             $newContent[$nextIndex+2] = "{0}Parameters=-OfficeDeploymentPath {1} -Channel {2} -Bitness {3}" -f $nextScriptIndex, $OfficeDeploymentUNC, $Channel, $Bitness
+        } elseif($DeploymentType -eq "DeployWithMSI"){
+            if(!$ScriptName){$ScriptName = "DeployOfficeMSI.ps1"}
+            $newContent[$nextIndex+1] = "{0}CmdLine={1}" -f $nextScriptIndex, $ScriptName
+            $newContent[$nextIndex+2] = "{0}Parameters=-OfficeDeploymentPath {1} -OfficeDeploymentFileName {2}" -f $nextScriptIndex, $OfficeDeploymentUNC, $OfficeDeploymentFileName
         }
 
 	    for($i=$nextIndex; $i -lt $length; $i++)
