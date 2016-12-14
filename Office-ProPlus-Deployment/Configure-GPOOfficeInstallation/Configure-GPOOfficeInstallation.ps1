@@ -338,7 +338,7 @@ Create-GPOOfficeDeployment -GroupPolicyName DeployDeferredChannel32Bit -Deployme
 	    [GPODeploymentType]$DeploymentType = 0,
         
         [Parameter()]
-        [string]$ScriptName = "GPO-OfficeDeploymentScript.ps1" ,
+        [string]$ScriptName,
               
         [Parameter()]
         [OfficeChannel]$Channel,
@@ -353,7 +353,10 @@ Create-GPOOfficeDeployment -GroupPolicyName DeployDeferredChannel32Bit -Deployme
         [bool]$WaitForInstallToFinish = $true,
 
         [Parameter()]
-        [bool]$InstallProofingTools = $false
+        [bool]$InstallProofingTools = $false,
+
+        [Parameter()]
+        [bool]$Quiet = $true
     )
 
     Begin
@@ -517,7 +520,8 @@ Create-GPOOfficeDeployment -GroupPolicyName DeployDeferredChannel32Bit -Deployme
         $OfficeDeploymentName = $OfficeDeploymentShare.Name
         $OfficeDeploymentUNC = "\\" + $OfficeDeploymentShare.PSComputerName + "\$OfficeDeploymentName"  
                
-        if($DeploymentType -eq "DeployWithConfigurationFile"){
+        if($DeploymentType -eq "DeployWithConfigurationFile")
+        {
             if(!$ScriptName){$ScriptName = "DeployConfigFile.ps1"}
             $newContent[$nextIndex+1] = "{0}CmdLine={1}" -f $nextScriptIndex, $ScriptName
             if($WaitForInstallToFinish -eq $false){
@@ -532,14 +536,22 @@ Create-GPOOfficeDeployment -GroupPolicyName DeployDeferredChannel32Bit -Deployme
                     $newContent[$nextIndex+2] = "{0}Parameters=-OfficeDeploymentPath {1} -ConfigurationXML {2} -Channel {3} -Bitness {4}" -f $nextScriptIndex, $OfficeDeploymentUNC, $ConfigurationXML, $Channel, $Bitness
                 }
             }
-        } elseif ($DeploymentType -eq "DeployWithScript") {
+        } elseif ($DeploymentType -eq "DeployWithScript") 
+        {
             if(!$ScriptName){$ScriptName = "GPO-OfficeDeploymentScript.ps1"}
             $newContent[$nextIndex+1] = "{0}CmdLine={1}" -f $nextScriptIndex, $ScriptName
             $newContent[$nextIndex+2] = "{0}Parameters=-OfficeDeploymentPath {1} -Channel {2} -Bitness {3}" -f $nextScriptIndex, $OfficeDeploymentUNC, $Channel, $Bitness
-        } elseif($DeploymentType -eq "DeployWithMSI"){
+
+        } elseif($DeploymentType -eq "DeployWithMSI")
+        {
             if(!$ScriptName){$ScriptName = "DeployOfficeMSI.ps1"}
+            if(!$OfficeDeploymentFileName){$OfficeDeploymentFileName = "OfficeProPlus.msi"}
+            
+            $Quiet = Convert-Bool $Quiet
+            
             $newContent[$nextIndex+1] = "{0}CmdLine={1}" -f $nextScriptIndex, $ScriptName
-            $newContent[$nextIndex+2] = "{0}Parameters=-OfficeDeploymentPath {1} -OfficeDeploymentFileName {2}" -f $nextScriptIndex, $OfficeDeploymentUNC, $OfficeDeploymentFileName
+            $newContent[$nextIndex+2] = "{0}Parameters=-OfficeDeploymentPath {1} -OfficeDeploymentFileName {2} -Quiet {3}" -f $nextScriptIndex, $OfficeDeploymentUNC, $OfficeDeploymentFileName, $Quiet
+
         }
 
 	    for($i=$nextIndex; $i -lt $length; $i++)
@@ -1299,6 +1311,18 @@ Function WriteToLogFile() {
         $fileName = $_.InvocationInfo.ScriptName.Substring($_.InvocationInfo.ScriptName.LastIndexOf("\")+1)
         WriteToLogFile -LNumber $_.InvocationInfo.ScriptLineNumber -FName $fileName -ActionError $_
     }
+}
+
+Function Convert-Bool() {
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    Param
+    (
+        [Parameter(Mandatory=$true)]
+        [bool] $value
+    )
+
+    $newValue = "$" + $value.ToString()
+    return $newValue 
 }
 
 $scriptPath = GetScriptRoot

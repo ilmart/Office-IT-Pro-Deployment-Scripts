@@ -6,17 +6,26 @@
 	[String]$OfficeDeploymentFileName = $NULL,
 
     [Parameter()]
-    [bool]$InstallSilently = $true
+    [bool]$Quiet = $true
 )
 
-Set-Location $OfficeDeploymentPath
+$ActionFile = "$OfficeDeploymentPath\$OfficeDeploymentFileName"
 
-$DeploymentFile = "$OfficeDeploymentPath\$OfficeDeploymentFileName"
+if($OfficeDeploymentFileName.EndsWith("msi")){
+    if($Quiet -eq $true){
+        $argList = "/qn /norestart"
+    } else {
+        $argList = "/norestart"
+    }
 
-if($InstallSilently -eq $true){
-    $arguments = " /i $DeploymentFile /qn"
-} else {
-    $arguments = " /i $DeploymentFile"
+    $cmdLine = """$ActionFile"" $argList"
+    $cmd = "cmd /c msiexec /i $cmdLine"
+} elseif($OfficeDeploymentFileName.EndsWith("exe")){
+    if($Quiet -eq $true){
+        $argList = "/silent"
+    }
+
+    $cmd = "$ActionFile $argList"
 }
 
-Start-Process $arguments
+Invoke-Expression $cmd
