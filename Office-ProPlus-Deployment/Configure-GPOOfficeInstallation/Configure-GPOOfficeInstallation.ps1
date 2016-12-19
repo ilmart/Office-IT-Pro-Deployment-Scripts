@@ -52,7 +52,7 @@ using System;
     {
         DeployWithScript = 0,
         DeployWithConfigurationFile = 1,
-        DeployWithMSI = 2
+        DeployWithInstallationFile = 2
     }
 "
 Add-Type -TypeDefinition $enum -ErrorAction SilentlyContinue
@@ -350,6 +350,9 @@ Create-GPOOfficeDeployment -GroupPolicyName DeployDeferredChannel32Bit -Deployme
         [string]$ConfigurationXML = $null,
 
         [Parameter()]
+        [string]$OfficeDeploymentFileName,
+
+        [Parameter()]
         [bool]$WaitForInstallToFinish = $true,
 
         [Parameter()]
@@ -542,9 +545,9 @@ Create-GPOOfficeDeployment -GroupPolicyName DeployDeferredChannel32Bit -Deployme
             $newContent[$nextIndex+1] = "{0}CmdLine={1}" -f $nextScriptIndex, $ScriptName
             $newContent[$nextIndex+2] = "{0}Parameters=-OfficeDeploymentPath {1} -Channel {2} -Bitness {3}" -f $nextScriptIndex, $OfficeDeploymentUNC, $Channel, $Bitness
 
-        } elseif($DeploymentType -eq "DeployWithMSI")
+        } elseif($DeploymentType -eq "DeployWithInstallationFile")
         {
-            if(!$ScriptName){$ScriptName = "DeployOfficeMSI.ps1"}
+            if(!$ScriptName){$ScriptName = "DeployOfficeInstallationFile.ps1"}
             if(!$OfficeDeploymentFileName){$OfficeDeploymentFileName = "OfficeProPlus.msi"}
             
             $Quiet = Convert-Bool $Quiet
