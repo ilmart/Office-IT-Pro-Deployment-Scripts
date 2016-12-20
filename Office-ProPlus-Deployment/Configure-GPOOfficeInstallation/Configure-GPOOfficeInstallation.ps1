@@ -543,7 +543,18 @@ Create-GPOOfficeDeployment -GroupPolicyName DeployDeferredChannel32Bit -Deployme
         {
             if(!$ScriptName){$ScriptName = "GPO-OfficeDeploymentScript.ps1"}
             $newContent[$nextIndex+1] = "{0}CmdLine={1}" -f $nextScriptIndex, $ScriptName
-            $newContent[$nextIndex+2] = "{0}Parameters=-OfficeDeploymentPath {1} -Channel {2} -Bitness {3}" -f $nextScriptIndex, $OfficeDeploymentUNC, $Channel, $Bitness
+            if($Channel -eq $null -and $Bitness -eq $null){
+                $newContent[$nextIndex+2] = "{0}Parameters=-OfficeDeploymentPath {1}" -f $nextScriptIndex, $OfficeDeploymentUNC
+            }
+            elseif($Channel -eq $null){
+                $newContent[$nextIndex+2] = "{0}Parameters=-OfficeDeploymentPath {1} -Bitness {2}" -f $nextScriptIndex, $OfficeDeploymentUNC, $Bitness
+            }
+            elseif($Bitness -eq $null){
+                $newContent[$nextIndex+2] = "{0}Parameters=-OfficeDeploymentPath {1} -Channel {2}" -f $nextScriptIndex, $OfficeDeploymentUNC, $Channel
+            }
+            else{
+                $newContent[$nextIndex+2] = "{0}Parameters=-OfficeDeploymentPath {1} -Channel {2} -Bitness {3}" -f $nextScriptIndex, $OfficeDeploymentUNC, $Channel, $Bitness
+            }
 
         } elseif($DeploymentType -eq "DeployWithInstallationFile")
         {
