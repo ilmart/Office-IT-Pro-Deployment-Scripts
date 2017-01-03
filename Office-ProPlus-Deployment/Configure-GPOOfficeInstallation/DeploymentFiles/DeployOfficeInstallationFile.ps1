@@ -6,13 +6,13 @@
 	[String]$OfficeDeploymentFileName = $NULL,
 
     [Parameter()]
-    [bool]$Quiet = $true
+    [string]$Quiet = "True"
 )
 
 $ActionFile = "$OfficeDeploymentPath\$OfficeDeploymentFileName"
 
 if($OfficeDeploymentFileName.EndsWith("msi")){
-    if($Quiet -eq $true){
+    if($Quiet -eq "True"){
         $argList = "/qn /norestart"
     } else {
         $argList = "/norestart"
@@ -21,7 +21,7 @@ if($OfficeDeploymentFileName.EndsWith("msi")){
     $cmdLine = """$ActionFile"" $argList"
     $cmd = "cmd /c msiexec /i $cmdLine"
 } elseif($OfficeDeploymentFileName.EndsWith("exe")){
-    if($Quiet -eq $true){
+    if($Quiet -eq "True"){
         $argList = "/silent"
     }
 

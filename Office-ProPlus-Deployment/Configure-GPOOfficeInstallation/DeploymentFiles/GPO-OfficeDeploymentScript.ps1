@@ -9,6 +9,9 @@ Param(
     [string]$Bitness = "32",
 
     [Parameter()]
+    [string]$DisplayLevel = "None",
+
+    [Parameter()]
     [string]$Languages,
 
     [Parameter()]
