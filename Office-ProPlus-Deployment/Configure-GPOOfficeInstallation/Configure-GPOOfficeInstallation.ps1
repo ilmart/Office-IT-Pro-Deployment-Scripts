@@ -305,6 +305,10 @@ to all of the targeted computers.
 The name of the deployment script if the DeploymentType is DeployWithScript. If ScriptName is not specified the 
 GPO-OfficeDeploymentScript.ps1 will be used.
 
+.PARAMETER OfficeDeploymentFileName
+The name of an Office installation file to deploy. An Office install MSI or EXE can be generated using the
+Microsoft Office ProPlus Install Toolkit which can be downloaded from http://officedev.github.io/Office-IT-Pro-Deployment-Scripts/XmlEditor.html
+
 .PARAMETER Channel
 The update channel to install.
 
@@ -327,6 +331,9 @@ Create-GPOOfficeDeployment -GroupPolicyName DeployCurrentChannel64Bit -Deploymen
 
 .EXAMPLE
 Create-GPOOfficeDeployment -GroupPolicyName DeployDeferredChannel32Bit -DeploymentType DeployWithConfigurationFile -Channel Current -Bitness 64 -ConfigurationXML Config-Deferred-32bit.xml
+
+.EXAMPLE
+Create-GPOOfficeDeployment -GroupPolicyName DeployWithMSI -DeploymentType DeployWithInstallationFile -OfficeDeploymentFileName OfficeProPlus.msi
 #>
     [CmdletBinding(SupportsShouldProcess=$true)]
     Param
