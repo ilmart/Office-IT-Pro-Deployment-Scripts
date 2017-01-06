@@ -330,7 +330,7 @@ Set this value to $true to include the Proofing Tools exe with the deployment.
 Create-GPOOfficeDeployment -GroupPolicyName DeployCurrentChannel64Bit -DeploymentType DeployWithScript -Channel Current -Bitness 64
 
 .EXAMPLE
-Create-GPOOfficeDeployment -GroupPolicyName DeployDeferredChannel32Bit -DeploymentType DeployWithConfigurationFile -Channel Current -Bitness 64 -ConfigurationXML Config-Deferred-32bit.xml
+Create-GPOOfficeDeployment -GroupPolicyName DeployCurrentChannel32Bit -DeploymentType DeployWithConfigurationFile -Channel Current -Bitness 32 -ConfigurationXML CurrentChannelDeployment.xml
 
 .EXAMPLE
 Create-GPOOfficeDeployment -GroupPolicyName DeployWithMSI -DeploymentType DeployWithInstallationFile -OfficeDeploymentFileName OfficeProPlus.msi
@@ -523,9 +523,9 @@ Create-GPOOfficeDeployment -GroupPolicyName DeployWithMSI -DeploymentType Deploy
 		    $newContent[$i] = $content[$i]
 	    }
                       
-        $ChannelShortName = ConvertChannelNameToShortName -ChannelName $Channel
-        $LargeDrv = Get-LargestDrive        
-        $OfficeDeploymentLocalPath = "$LargeDrv\OfficeDeployment"
+        #$ChannelShortName = ConvertChannelNameToShortName -ChannelName $Channel
+        #$LargeDrv = Get-LargestDrive        
+        #$OfficeDeploymentLocalPath = "$LargeDrv\OfficeDeployment"
         $OfficeDeploymentShare = Get-WmiObject Win32_Share | ? {$_.Name -like "OfficeDeployment$"}
         $OfficeDeploymentName = $OfficeDeploymentShare.Name
         $OfficeDeploymentUNC = "\\" + $OfficeDeploymentShare.PSComputerName + "\$OfficeDeploymentName" 
@@ -543,15 +543,15 @@ Create-GPOOfficeDeployment -GroupPolicyName DeployWithMSI -DeploymentType Deploy
             $newContent[$nextIndex+1] = "{0}CmdLine={1}" -f $nextScriptIndex, $ScriptName
 
             if($WaitForInstallToFinish -eq $false){
-	            $newContent[$nextIndex+2] = "{0}Parameters=-OfficeDeploymentPath {1} -ConfigFileName {2} -WaitForInstallToFinish {3} -Channel {4} -Bitness {5}" -f $nextScriptIndex, $OfficeDeploymentUNC, $ConfigurationXML, $WaitForInstallToFinish, $Channel, $Bit
+	            $newContent[$nextIndex+2] = "{0}Parameters=-OfficeDeploymentPath {1} -ConfigFileName {2} -WaitForInstallToFinish {3}" -f $nextScriptIndex, $OfficeDeploymentUNC, $ConfigurationXML, $WaitForInstallToFinish
                 if($InstallProofingTools -eq $true){
-                    $newContent[$nextIndex+2] = "{0}Parameters=-OfficeDeploymentPath {1} ConfigFileName {2} -WaitForInstallToFinish {3} -InstallProofingTools {4} -Channel {5} -Bitness {6}" -f $nextScriptIndex, $OfficeDeploymentUNC, $ConfigurationXML, $WaitForInstallToFinish, $InstallProofingTools, $Channel, $Bit
+                    $newContent[$nextIndex+2] = "{0}Parameters=-OfficeDeploymentPath {1} ConfigFileName {2} -WaitForInstallToFinish {3} -InstallProofingTools {4}" -f $nextScriptIndex, $OfficeDeploymentUNC, $ConfigurationXML, $WaitForInstallToFinish, $InstallProofingTools
                 }
             } else {
                 if($InstallProofingTools -eq $true){
-                    $newContent[$nextIndex+2] = "{0}Parameters=-OfficeDeploymentPath {1} -ConfigFileName {2} -InstallProofingTools {3} -Channel {4} -Bitness {5}" -f $nextScriptIndex, $OfficeDeploymentUNC, $ConfigurationXML, $InstallProofingTools, $Channel, $Bit
+                    $newContent[$nextIndex+2] = "{0}Parameters=-OfficeDeploymentPath {1} -ConfigFileName {2} -InstallProofingTools {3}" -f $nextScriptIndex, $OfficeDeploymentUNC, $ConfigurationXML, $InstallProofingTools
                 } else {
-                    $newContent[$nextIndex+2] = "{0}Parameters=-OfficeDeploymentPath {1} -ConfigFileName {2} -Channel {3} -Bitness {4}" -f $nextScriptIndex, $OfficeDeploymentUNC, $ConfigurationXML, $Channel, $Bit
+                    $newContent[$nextIndex+2] = "{0}Parameters=-OfficeDeploymentPath {1} -ConfigFileName {2}" -f $nextScriptIndex, $OfficeDeploymentUNC, $ConfigurationXML
                 }
             }
         } elseif ($DeploymentType -eq "DeployWithScript") 
