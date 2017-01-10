@@ -164,7 +164,7 @@ The update channel to deploy.
 .PARAMETER Bitness
 The architecture of the update channel.
 
-.PARAMETER OfficeSourceFilesPath
+.PARAMETER OfficeFilesPath
 The path to the required deployment files.
 
 .PARAMETER MoveSourceFiles
@@ -186,7 +186,7 @@ Configure-GPOOfficeDeployment -Channel Current -Bitness 64 -OfficeSourceFilesPat
         [Bitness]$Bitness = "v32",
 
         [Parameter()]
-	    [string]$OfficeSourceFilesPath,
+	    [string]$OfficeFilesPath,
 
         [Parameter()]
         [string]$MoveSourceFiles = $true
@@ -202,12 +202,12 @@ Configure-GPOOfficeDeployment -Channel Current -Bitness 64 -OfficeSourceFilesPat
     Process 
     {
         Try{
-            $cabFilePath = "$OfficeSourceFilesPath\ofl.cab"
+            $cabFilePath = "$OfficeFilesPath\ofl.cab"
             if(Test-Path $cabFilePath){
                 Copy-Item -Path $cabFilePath -Destination "$PSScriptRoot\ofl.cab" -Force
             }
 
-            $ChannelXml = Get-ChannelXml -FolderPath $OfficeSourceFilesPath -OverWrite $false
+            $ChannelXml = Get-ChannelXml -FolderPath $OfficeFilesPath -OverWrite $false
            
             $selectChannel = $ChannelXml.UpdateFiles.baseURL | Where {$_.branch -eq $Channel.ToString() }
             $latestVersion = Get-ChannelLatestVersion -ChannelUrl $selectChannel.URL -Channel $Channel -FolderPath $OfficeFilesPath -OverWrite $false
@@ -223,8 +223,8 @@ Configure-GPOOfficeDeployment -Channel Current -Bitness 64 -OfficeSourceFilesPat
         
             [System.IO.Directory]::CreateDirectory($LocalChannelPath) | Out-Null
                    
-            if($OfficeSourceFilesPath) {
-                $officeFileChannelPath = "$OfficeSourceFilesPath\$ChannelShortName"
+            if($OfficeFilesPath) {
+                $officeFileChannelPath = "$OfficeFilesPath\$ChannelShortName"
                 $officeFileTargetPath = "$LocalChannelPath"
 
                 [string]$oclVersion = $NULL
@@ -254,7 +254,7 @@ Configure-GPOOfficeDeployment -Channel Current -Bitness 64 -OfficeSourceFilesPat
                     Copy-Item -Path $officeFileChannelPath -Destination $officeFileTargetPath -Recurse -Force
                 }
 
-                $cabFilePath = "$OfficeSourceFilesPath\ofl.cab"
+                $cabFilePath = "$OfficeFilesPath\ofl.cab"
                 if (Test-Path $cabFilePath) {
                     Copy-Item -Path $cabFilePath -Destination "$LocalPath\ofl.cab" -Force
                 }
@@ -701,7 +701,7 @@ Updates the SourceFiles of a GPO deployment
 .DESCRIPTION
 Update the SourceFiles by copying or moving additional channel files to the OfficeDeployment$ share.
 
-.PARAMETER OfficeSourceFilesPath
+.PARAMETER OfficeFilesPath
 The filepath to where the Office channel files are downloaded.
 
 .PARAMETER Channels
@@ -711,15 +711,15 @@ The channels to copy/move to the OfficeDeployment$ share.
 If set to $true the channel files will be moved to the OfficeDeployment$ share. If not specified the files will be copied.
 
 .EXAMPLE
-Update-GPOSourceFiles -OfficeSourceFilesPath D:\OfficeChannelFiles -Channel Current
+Update-GPOSourceFiles -OfficeFilesPath D:\OfficeChannelFiles -Channel Current
 
 .EXAMPLE
-Update-GPOSourceFiles -OfficeSourceFilesPath D:\OfficeChannelFiles -Channels Deferred,FirstReleaseDeferred -MoveSourceFiles $true
+Update-GPOSourceFiles -OfficeFilesPath D:\OfficeChannelFiles -Channels Deferred,FirstReleaseDeferred -MoveSourceFiles $true
 #>
     [CmdletBinding(SupportsShouldProcess=$true)]
     Param(
         [Parameter()]
-	    [string]$OfficeSourceFilesPath,
+	    [string]$OfficeFilesPath,
 
         [Parameter()]
         [OfficeChannel[]] $Channels = @(1,2,3),
@@ -739,7 +739,7 @@ Update-GPOSourceFiles -OfficeSourceFilesPath D:\OfficeChannelFiles -Channels Def
         try{
             Check-AdminAccess
 
-            $cabFilePath = "$OfficeSourceFilesPath\ofl.cab"
+            $cabFilePath = "$OfficeFilesPath\ofl.cab"
 
             if (Test-Path $cabFilePath) {
                 Copy-Item -Path $cabFilePath -Destination "$PSScriptRoot\ofl.cab" -Force
@@ -753,7 +753,7 @@ Update-GPOSourceFiles -OfficeSourceFilesPath D:\OfficeChannelFiles -Channels Def
             foreach($Channel in $Channels){
                 $ChannelShortName = ConvertChannelNameToShortName -ChannelName $Channel
 
-                $officeFileChannelPath = "$OfficeSourceFilesPath\$ChannelShortName"
+                $officeFileChannelPath = "$OfficeFilesPath\$ChannelShortName"
                 $officeFileTargetPath = "$LocalChannelPath\SourceFiles\$ChannelShortName"
 
                 $tempofficeFileChannelPath = "$officeFileChannelPath\Office\Data"
@@ -809,7 +809,7 @@ Update-GPOSourceFiles -OfficeSourceFilesPath D:\OfficeChannelFiles -Channels Def
                     }
                 }
 
-                $cabFilePath = "$OfficeSourceFilesPath\ofl.cab"
+                $cabFilePath = "$OfficeFilesPath\ofl.cab"
                 if (Test-Path $cabFilePath) {
                     Copy-Item -Path $cabFilePath -Destination "$LocalPath\ofl.cab" -Force
                 }
