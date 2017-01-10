@@ -693,6 +693,133 @@ Create-GPOOfficeDeployment -GroupPolicyName DeployWithMSI -DeploymentType Deploy
     }
 }
 
+Function Update-GPOSourceFiles {
+<#
+.SYNOPSIS
+Updates the SourceFiles of a GPO deployment
+
+.DESCRIPTION
+Update the SourceFiles by copying or moving additional channel files to the OfficeDeployment$ share.
+
+.PARAMETER OfficeSourceFilesPath
+The filepath to where the Office channel files are downloaded.
+
+.PARAMETER Channels
+The channels to copy/move to the OfficeDeployment$ share.
+
+.PARAMETER MoveSourceFiles
+If set to $true the channel files will be moved to the OfficeDeployment$ share. If not specified the files will be copied.
+
+.EXAMPLE
+Update-GPOSourceFiles -OfficeSourceFilesPath D:\OfficeChannelFiles -Channel Current
+
+.EXAMPLE
+Update-GPOSourceFiles -OfficeSourceFilesPath D:\OfficeChannelFiles -Channels Deferred,FirstReleaseDeferred -MoveSourceFiles $true
+#>
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    Param(
+        [Parameter()]
+	    [string]$OfficeSourceFilesPath,
+
+        [Parameter()]
+        [OfficeChannel[]] $Channels = @(1,2,3),
+
+        [Parameter()]
+	    [bool]$MoveSourceFiles = $false
+    )
+
+    Begin
+    {
+	    $currentExecutionPolicy = Get-ExecutionPolicy
+	    Set-ExecutionPolicy Unrestricted -Scope Process -Force  
+        $startLocation = Get-Location        
+    }
+
+    Process{
+        try{
+            Check-AdminAccess
+
+            $cabFilePath = "$OfficeSourceFilesPath\ofl.cab"
+
+            if (Test-Path $cabFilePath) {
+                Copy-Item -Path $cabFilePath -Destination "$PSScriptRoot\ofl.cab" -Force
+            }
+
+            $OfficeDeploymentShare = Get-WmiObject Win32_Share | ? {$_.Name -like "OfficeDeployment$"}
+            $OfficeDeploymentName = $OfficeDeploymentShare.Name
+            $OfficeDeploymentUNC = "\\" + $OfficeDeploymentShare.PSComputerName + "\$OfficeDeploymentName"
+            $LocalChannelPath = $OfficeDeploymentUNC 
+
+            foreach($Channel in $Channels){
+                $ChannelShortName = ConvertChannelNameToShortName -ChannelName $Channel
+
+                $officeFileChannelPath = "$OfficeSourceFilesPath\$ChannelShortName"
+                $officeFileTargetPath = "$LocalChannelPath\SourceFiles\$ChannelShortName"
+
+                $tempofficeFileChannelPath = "$officeFileChannelPath\Office\Data"
+                $tempLocalChannelPath = "$LocalChannelPath\SourceFiles\$ChannelShortName\Office\Data"
+
+                [string]$oclVersion = $NULL
+                if ($officeFileChannelPath) {
+                    if (Test-Path -Path "$officeFileChannelPath\Office\Data") {
+                       $oclVersion = Get-LatestVersion -UpdateURLPath $officeFileChannelPath
+                    }
+                }
+
+                if ($oclVersion) {
+                    $latestVersion = $oclVersion
+                }
+
+                if ($MoveSourceFiles){                                
+                    if(!(Test-Path -Path $officeFileTargetPath)) {
+                        Move-Item -Path $officeFileChannelPath -Destination "$LocalChannelPath\SourceFiles" -Force
+                    }else{
+                        $subfiles = Get-ChildItem $tempofficeFileChannelPath
+                        foreach($file in $subfiles){
+                            [array]$tempLocalChannelPathFiles = (Get-ChildItem -Path $tempLocalChannelPath).Name
+                            if($tempLocalChannelPathFiles -notcontains $file.Name){
+                                Move-Item -Path $tempofficeFileChannelPath\$file -Destination $tempLocalChannelPath -Force
+                            }
+                            else{
+                                [array]$versionFiles = (Get-ChildItem -Path $tempLocalChannelPath\$latestVersion).Name
+                                [array]$officeChannelVersionFiles = (Get-ChildItem -Path "$tempofficeFileChannelPath\$latestVersion").Name
+                                foreach($officeChannelVersionFile in $officeChannelVersionFiles) {
+                                    if($versionFiles -notcontains $officeChannelVersionFile){
+                                        Move-Item -Path $tempofficeFileChannelPath\$latestVersion\$officeChannelVersionFile -Destination $tempLocalChannelPath\$latestVersion -Force
+                                    }
+                                }
+                            }           
+                        }
+
+                        Get-ChildItem -Path $officeFileChannelPath -Recurse | Remove-Item -Force -Recurse | Out-Null
+
+                        [System.IO.Directory]::Delete($officeFileChannelPath) | Out-Null
+                    }
+                } else {
+                    if(!(Test-Path -Path $officeFileTargetPath)) {
+                        #[System.IO.Directory]::CreateDirectory($officeFileTargetPath) | Out-Null
+
+                        Copy-Item -Path $officeFileChannelPath -Destination "$LocalChannelPath\SourceFiles" -Recurse -Force
+                    }
+                    else{
+                        $subfiles = Get-ChildItem $tempofficeFileChannelPath
+                        foreach($file in $subfiles){
+                            Copy-Item -Path $tempofficeFileChannelPath\$file -Destination $tempLocalChannelPath -Recurse -Force 
+                        }             
+                    }
+                }
+
+                $cabFilePath = "$OfficeSourceFilesPath\ofl.cab"
+                if (Test-Path $cabFilePath) {
+                    Copy-Item -Path $cabFilePath -Destination "$LocalPath\ofl.cab" -Force
+                }
+
+                CreateMainCabFiles -LocalPath $LocalChannelPath -ChannelShortName $ChannelShortName -LatestVersion $latestVersion
+            }
+        } catch {}
+    }
+}
+
 function DownloadFile($url, $targetFile) {
 
   for($t=1;$t -lt 10; $t++) {
