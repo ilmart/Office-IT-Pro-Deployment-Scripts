@@ -540,6 +540,7 @@ process {
 Function Get-InstalledLanguages() {
     [CmdletBinding()]
     Param(
+        [string]$computer = $env:COMPUTERNAME
     )
     process {
        $returnLangs = @()
@@ -548,19 +549,51 @@ Function Get-InstalledLanguages() {
        if ($mainRegPath) {
           if (Test-Path -Path "hklm:\$mainRegPath\ProductReleaseIDs") {
                $activeConfig = Get-ItemProperty -Path "hklm:\$mainRegPath\ProductReleaseIDs"
-               $activeId = $activeConfig.ActiveConfiguration
-               $languages = Get-ChildItem -Path "hklm:\$mainRegPath\ProductReleaseIDs\$activeId\culture"
+               if($activeConfig.ActiveConfiguration){
+                  $languages = Get-ChildItem -Path "hklm:\$mainRegPath\ProductReleaseIDs\$activeId\culture"
+                  foreach ($language in $languages) {
+                      $lang = Get-ItemProperty -Path  $language.pspath
+                      $keyName = $lang.PSChildName
+                      if ($keyName.Contains(".")) {
+                          $keyName = $keyName.Split(".")[0]
+                      }
+                      
+                      if ($keyName.ToLower() -ne "x-none") {
+                         $culture = New-Object system.globalization.cultureinfo($keyName)
+                         $returnLangs += $culture
+                      }
+                  }
+               } else {
+                  $HKLM = [UInt32] "0x80000002"
+                  $regProv = Get-Wmiobject -list "StdRegProv" -Namespace root\default -ComputerName $computer
 
-               foreach ($language in $languages) {
-                  $lang = Get-ItemProperty -Path  $language.pspath
-                  $keyName = $lang.PSChildName
-                  if ($keyName.Contains(".")) {
-                      $keyName = $keyName.Split(".")[0]
+                  $activeConfig = "hklm:\$mainRegPath\ProductReleaseIDs"
+                  $activeItems = Get-ChildItem -Path $activeConfig
+    
+                  foreach($config in $activeItems){
+                      $item = $config.Name | Split-Path -Leaf
+                      $path = Join-Path $activeConfig $item
+                  
+                      $pathItems = Get-ChildItem -Path $path
+                  
+                      foreach($pathItem in $pathItems){
+                          if($pathItem.Name -match "Culture"){
+                              $activeID = $item
+                          }
+                      }
                   }
 
-                  if ($keyName.ToLower() -ne "x-none") {
-                     $culture = New-Object system.globalization.cultureinfo($keyName)
-                     $returnLangs += $culture
+                  $languages = (Get-Item -Path "hklm:\$mainRegPath\ProductReleaseIDs\$activeId\culture").Property
+
+                  foreach ($language in $languages) {
+                      if ($language.Contains(".")) {
+                          $language = $keyName.Split(".")[0]
+                      }
+                      
+                      if ($language.ToLower() -ne "x-none") {
+                         $culture = New-Object system.globalization.cultureinfo($language)
+                         $returnLangs += $culture
+                      }
                   }
                }
           }
