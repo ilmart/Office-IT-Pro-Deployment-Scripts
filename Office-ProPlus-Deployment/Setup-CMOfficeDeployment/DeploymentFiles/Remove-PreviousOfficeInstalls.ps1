@@ -903,7 +903,7 @@ begin {
 
     $defaultDisplaySet = 'DisplayName','Version', 'ComputerName'
 
-    $defaultDisplayPropertySet = New-Object System.Management.Automation.PSPropertySet(‘DefaultDisplayPropertySet’,[string[]]$defaultDisplaySet)
+    $defaultDisplayPropertySet = New-Object System.Management.Automation.PSPropertySet('DefaultDisplayPropertySet',[string[]]$defaultDisplaySet)
     $PSStandardMembers = [System.Management.Automation.PSMemberInfo[]]@($defaultDisplayPropertySet)
 }
 
@@ -1074,10 +1074,12 @@ process {
            $officeProduct = $false
            foreach ($officeInstallPath in $PathList) {
              if ($officeInstallPath) {
+                try{
                 $installReg = "^" + $installPath.Replace('\', '\\')
                 $installReg = $installReg.Replace('(', '\(')
                 $installReg = $installReg.Replace(')', '\)')
                 if ($officeInstallPath -match $installReg) { $officeProduct = $true }
+                } catch {}
              }
            }
 
@@ -1089,8 +1091,8 @@ process {
                                                         -and $name.ToUpper() -notlike "*MUI*" `
                                                         -and $name.ToUpper() -notlike "*VISIO*" `
                                                         -and $name.ToUpper() -notlike "*PROJECT*" `
-                                                        -and $name.ToUpper() -notlike "PROOFING*") {
-               $primaryOfficeProduct = $true
+                                                        -and $name.ToUpper() -notlike "*PROOFING*") {
+              $primaryOfficeProduct = $true
            }
 
            $clickToRunComponent = $regProv.GetDWORDValue($HKLM, $path, "ClickToRunComponent").uValue
