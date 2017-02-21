@@ -550,6 +550,7 @@ Function Get-InstalledLanguages() {
           if (Test-Path -Path "hklm:\$mainRegPath\ProductReleaseIDs") {
                $activeConfig = Get-ItemProperty -Path "hklm:\$mainRegPath\ProductReleaseIDs"
                if($activeConfig.ActiveConfiguration){
+                  $activeId = $activeConfig.ActiveConfiguration
                   $languages = Get-ChildItem -Path "hklm:\$mainRegPath\ProductReleaseIDs\$activeId\culture"
                   foreach ($language in $languages) {
                       $lang = Get-ItemProperty -Path  $language.pspath
