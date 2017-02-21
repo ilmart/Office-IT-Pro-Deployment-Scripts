@@ -39,8 +39,6 @@ $validLanguages = @(
 "Arabic|ar-sa",
 "Bulgarian|bg-bg",
 "Chinese (Simplified)|zh-cn",
-
-
 "Chinese|zh-tw",
 "Croatian|hr-hr",
 "Czech|cs-cz",

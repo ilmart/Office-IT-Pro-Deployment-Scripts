@@ -461,6 +461,7 @@ Function newCTRRemoveXml {
   <Remove All="True">
   </Remove>
   <Display Level="None" AcceptEULA="TRUE" />
+  <Property Name="FORCEAPPSHUTDOWN" Value="TRUE" />
 </Configuration>
 "@
 }
