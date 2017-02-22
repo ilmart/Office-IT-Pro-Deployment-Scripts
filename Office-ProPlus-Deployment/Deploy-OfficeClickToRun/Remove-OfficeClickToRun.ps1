@@ -94,8 +94,13 @@ Will uninstall Office Click-to-Run.
         }
             
         $c2rVersion = Get-OfficeVersion | Where-Object {$_.ClickToRun -eq "True" -and $_.DisplayName -match "Microsoft Office 365"}
-        if ( $c2rVersion.Count -gt 0) {
-            $c2rVersion =  $c2rVersion[0]
+        if ($c2rVersion.Count -gt 0) {
+            $ClientCulture = GetClientCulture
+            foreach($version in $c2rVersion){
+                if($version.DisplayName -match $ClientCulture){
+                    $c2rVersion = $version
+                }
+            }
         }
 
         $c2rName = $c2rVersion.DisplayName
@@ -458,6 +463,34 @@ process {
   return $results;
 }
 
+}
+
+function GetClientCulture{
+    Param(
+        [string]$computer = $env:COMPUTERNAME
+    )
+    
+    $HKLM = [UInt32] "0x80000002"
+
+    $officeKeys = 'SOFTWARE\Microsoft\Office',
+                  'SOFTWARE\Wow6432Node\Microsoft\Office'
+
+    $regProv = Get-WmiObject -List "StdRegProv" -Namespace root\default -ComputerName $computer
+
+    foreach ($regKey in $officeKeys) {
+        $officeVersion = $regProv.EnumKey($HKLM, $regKey)
+        foreach ($key in $officeVersion.sNames) {
+            if($key -match "\d{2}\.\d") {
+                $path = join-path $regKey $key
+                $clickToRunPath = join-path $path "ClickToRun\Configuration"
+                if(Test-Path "HKLM:\$clickToRunPath"){           
+                    $clientCulture = $regProv.GetStringValue($HKLM, $clickToRunPath, "ClientCulture").sValue
+                }               
+            }
+        }
+    }
+
+    return $clientCulture
 }
 
 Function newCTRRemoveXml {

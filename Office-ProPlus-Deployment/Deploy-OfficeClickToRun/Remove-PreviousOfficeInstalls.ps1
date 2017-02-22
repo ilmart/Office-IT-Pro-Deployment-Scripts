@@ -323,7 +323,6 @@ In this example the primary Office product will be removed even if it is Click-T
             foreach($product in $ProductsToRemove){
                 switch($product){
                     "MainOfficeProduct" {
-                        Write-Host "`tRemoving "$MainOfficeProduct.DisplayName"..."
                         $MainOfficeProductName = $MainOfficeProduct.Name
                         
                         if((Get-OfficeVersion | select *).ClickToRun -eq $true){
@@ -370,6 +369,7 @@ In this example the primary Office product will be removed even if it is Click-T
 
                         try{
                              if($ActionFile -And (Test-Path -Path $ActionFile)){
+                                Write-Host "`tRemoving "$MainOfficeProduct.DisplayName"..."
                                 $cmdLine = """$ActionFile"" $MainOfficeProductName $argList"
                                 $cmd = "cmd /c cscript //Nologo $cmdLine"
                                 Invoke-Expression $cmd
