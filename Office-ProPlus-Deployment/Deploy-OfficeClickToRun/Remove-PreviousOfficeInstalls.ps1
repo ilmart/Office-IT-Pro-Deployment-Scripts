@@ -238,8 +238,16 @@ In this example the primary Office product will be removed even if it is Click-T
         foreach($product in $ProductsToRemove){
             switch($product){
                 "MainOfficeProduct"{
-                    $MainOfficeProduct = GetProductName -ProductName MainOfficeProduct
-                    $argListProducts += $MainOfficeProduct.Name
+                    $OfficeProduct = GetProductName -ProductName MainOfficeProduct
+                    $MainOfficeProduct = $OfficeProduct | ? {$_.DisplayName -notmatch "Language Pack"}
+                    $OfficeLanguagePacks = $officeProduct | ? {$_.DisplayName -match "Language Pack"}
+                    if($OfficeLanguagePacks){
+                        foreach($OffLang in $OfficeLanguagePacks){
+                            $OfficeLanguagePacks += $OffLang.Name
+                        }
+                    }
+                    $OfficeArgListProducts += $MainOfficeProduct.Name
+                    $OfficeArgListProducts = $OfficeArgListProducts -join ","
                 }
                 "Visio" {
                     $VisioProduct = GetProductName -ProductName Visio
@@ -251,8 +259,7 @@ In this example the primary Office product will be removed even if it is Click-T
                         }
                     }
                     $VisioArgListProducts += $MainVisioProduct.Name
-
-                    $VisioArgListProducts = $argListProducts -join ","
+                    $VisioArgListProducts = $VisioArgListProducts -join ","
 
                     foreach($product in $officeProducts){
                         if($product.DisplayName.ToLower() -eq $VisioProduct.DisplayName.ToLower()){
@@ -266,7 +273,15 @@ In this example the primary Office product will be removed even if it is Click-T
                 }
                 "Project" {
                     $ProjectProduct = GetProductName -ProductName Project
-                    $argListProducts += $ProjectProduct.Name
+                    $MainProjectProduct = $ProjectProduct | ? {$_.DisplayName -notmatch "Language Pack"}
+                    $ProjectLanguagePacks = $ProjectProduct | ? {$_.DisplayName -match "Language Pack"}
+                    if($ProjectLanguagePacks){
+                        foreach($ProjLang in $ProjectLanguagePacks){
+                            $ProjectArgListProducts += $ProjLang.Name
+                        }
+                    }
+                    $ProjectArgListProducts += $MainProjectProduct.Name
+                    $ProjectArgListProducts = $ProjectArgListProducts -join ","
 
                     foreach($product in $officeProducts){
                         if($product.DisplayName.ToLower() -eq $ProjectProduct.DisplayName.ToLower()){
@@ -1254,10 +1269,18 @@ param(
             if($name){
                 if($name.ToLower() -match $ProductName.ToLower()){
                     if($path -notmatch "{.{8}-.{4}-.{4}-.{4}-0000000FF1CE}"){
-                        if($key.Split(".")[1] -ne $null){
-                            $prodName = $key.Split(".")[1]
+                        if($name -match "Language Pack"){
+                            if($key.Split(".")[1] -ne $null){
+                                $regex = "^[^.]*"
+                                $string = $key -replace $regex, ""
+                                $prodName = $string.trim(".")
+                            }
                         } else {
-                            $prodName = $key
+                            if($key.Split(".")[1] -ne $null){
+                                $prodName = $key.Split(".")[1]
+                            } else {
+                                $prodName = $key
+                            }
                         }
                         $prodVersion = $version.Split(".")[0]
                         $DisplayName = $name
@@ -1268,15 +1291,6 @@ param(
                     }
                 }
             }
-
-
-
-
-
-            #$Result = New-Object -TypeName PSObject
-            #Add-Member -InputObject $Result -MemberType NoteProperty -Name "DisplayName" -Value $DisplayName 
-            #Add-Member -InputObject $Result -MemberType NoteProperty -Name "Name" -Value $prodName
-            #Add-Member -InputObject $Result -MemberType NoteProperty -Name "Version" -Value $prodVersion
         }
     }
 
