@@ -1203,7 +1203,14 @@ param(
     [string]$ProductName
 )
     if($ProductName -eq 'MainOfficeProduct'){
-        $ProductName = (Get-OfficeVersion).DisplayName | select -Unique
+        $MainOfficeProducts = @()
+        #$Products = (Get-OfficeVersion).DisplayName | select -Unique
+        $MainOfficeProducts = (Get-OfficeVersion)
+        if($MainOfficeProducts.GetType().Name -eq "Object[]"){
+            $primaryOfficeLanguage = GetClientCulture
+            $MainOfficeProduct = (Get-OfficeVersion) | ? {$_.DisplayName -match $primaryOfficeLanguage}
+            $ProductName = $MainOfficeProduct.DisplayName
+        }
     } 
         
     $HKLM = [UInt32] "0x80000002"
@@ -1220,7 +1227,7 @@ param(
     }
 
     foreach ($regKey in $installKeys) {
-        $keyList = new-object System.Collections.ArrayList
+        $keyList = New-Object System.Collections.ArrayList
         $keys = $regProv.EnumKey($HKLM, $regKey)
 
         foreach ($key in $keys.sNames) {
@@ -1435,6 +1442,34 @@ function odtGetOfficeLanguages() {
 
         return $appLanguages1;
     }
+}
+
+function GetClientCulture{
+    Param(
+        [string]$computer = $env:COMPUTERNAME
+    )
+    
+    $HKLM = [UInt32] "0x80000002"
+
+    $officeKeys = 'SOFTWARE\Microsoft\Office',
+                  'SOFTWARE\Wow6432Node\Microsoft\Office'
+
+    $regProv = Get-WmiObject -List "StdRegProv" -Namespace root\default -ComputerName $computer
+
+    foreach ($regKey in $officeKeys) {
+        $officeVersion = $regProv.EnumKey($HKLM, $regKey)
+        foreach ($key in $officeVersion.sNames) {
+            if($key -match "\d{2}\.\d") {
+                $path = join-path $regKey $key
+                $clickToRunPath = join-path $path "ClickToRun\Configuration"
+                if(Test-Path "HKLM:\$clickToRunPath"){           
+                    $clientCulture = $regProv.GetStringValue($HKLM, $clickToRunPath, "ClientCulture").sValue
+                }               
+            }
+        }
+    }
+
+    return $clientCulture
 }
 
 function Get-CurrentLineNumber {
