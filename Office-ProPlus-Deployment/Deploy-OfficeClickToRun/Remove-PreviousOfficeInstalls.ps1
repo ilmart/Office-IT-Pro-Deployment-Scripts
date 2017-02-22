@@ -405,7 +405,7 @@ In this example the primary Office product will be removed even if it is Click-T
                         } catch {}                                  
                     }
                     "Visio" {
-                        Write-Host "`tRemoving "$VisioProduct.DisplayName"..."
+                        Write-Host "`tRemoving Visio products..."
                         $VisioProductName = $VisioProduct.Name
 
                         switch($VisioProduct.Version){
@@ -454,7 +454,7 @@ In this example the primary Office product will be removed even if it is Click-T
 
                     }
                     "Project" {
-                        Write-Host "`tRemoving "$ProjectProduct.DisplayName"..."
+                        Write-Host "`tRemoving Project products..."
                         $ProjectProductName = $ProjectProduct.Name
 
                         switch($ProjectProduct.Version){
