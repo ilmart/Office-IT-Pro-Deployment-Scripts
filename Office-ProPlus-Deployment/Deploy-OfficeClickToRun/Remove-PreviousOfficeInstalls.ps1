@@ -1236,15 +1236,17 @@ param(
             $version = $regProv.GetStringValue($HKLM, $path, "DisplayVersion").sValue
             
             if($name){
-                if($name.ToLower() -match $ProductName.ToLower()){
-                    if($path -notmatch "{.{8}-.{4}-.{4}-.{4}-0000000FF1CE}"){
-                        if($key.Split(".")[1] -ne $null){
-                            $prodName = $key.Split(".")[1]
-                        } else {
-                            $prodName = $key
+                if($name -notmatch "Language Pack"){
+                    if($name.ToLower() -match $ProductName.ToLower()){
+                        if($path -notmatch "{.{8}-.{4}-.{4}-.{4}-0000000FF1CE}"){
+                            if($key.Split(".")[1] -ne $null){
+                                $prodName = $key.Split(".")[1]
+                            } else {
+                                $prodName = $key
+                            }
+                            $prodVersion = $version.Split(".")[0]
+                            $DisplayName = $name
                         }
-                        $prodVersion = $version.Split(".")[0]
-                        $DisplayName = $name
                     }
                 }
             }
