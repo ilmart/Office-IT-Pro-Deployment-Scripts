@@ -223,7 +223,9 @@ In this example the primary Office product will be removed even if it is Click-T
     $16MSIVBS = "OffScrub_O16msi.vbs"
 
     $argList = ""
-    $argListProducts = @()
+    $MainArgListProducts = @()
+    $VisioArgListProducts = @()
+    $ProjectArgListProducts = @()
 
     $officeProducts = Get-OfficeVersion -ShowAllInstalledProducts | select *
 
@@ -241,7 +243,16 @@ In this example the primary Office product will be removed even if it is Click-T
                 }
                 "Visio" {
                     $VisioProduct = GetProductName -ProductName Visio
-                    $argListProducts += $VisioProduct.Name
+                    $MainVisioProduct = $VisioProduct | ? {$_.DisplayName -notmatch "Language Pack"}
+                    $VisioLanguagePacks = $VisioProduct | ? {$_.DisplayName -match "Language Pack"}
+                    if($VisioLanguagePacks){
+                        foreach($VisLang in $VisioLanguagePacks){
+                            $VisioArgListProducts += $VisLang.Name
+                        }
+                    }
+                    $VisioArgListProducts += $MainVisioProduct.Name
+
+                    $VisioArgListProducts = $argListProducts -join ","
 
                     foreach($product in $officeProducts){
                         if($product.DisplayName.ToLower() -eq $VisioProduct.DisplayName.ToLower()){
@@ -421,7 +432,7 @@ In this example the primary Office product will be removed even if it is Click-T
                         }
 
                         if($ActionFile -And (Test-Path -Path $ActionFile)){
-                            $cmdLine = """$ActionFile"" $VisioProductName $argList"
+                            $cmdLine = """$ActionFile"" $VisioArgListProducts $argList"
                             $cmd = "cmd /c cscript //Nologo $cmdLine"
                             Invoke-Expression $cmd
                         }
@@ -1202,6 +1213,11 @@ param(
     [Parameter()]
     [string]$ProductName
 )
+    $defaultDisplaySet = 'DisplayName','Name','Version'
+    $defaultDisplayPropertySet = New-Object System.Management.Automation.PSPropertySet('DefaultDisplayPropertySet',[string[]]$defaultDisplaySet)
+    $PSStandardMembers = [System.Management.Automation.PSMemberInfo[]]@($defaultDisplayPropertySet)
+    $results = New-Object PSObject[] 0;
+    
     if($ProductName -eq 'MainOfficeProduct'){
         $MainOfficeProducts = @()
         #$Products = (Get-OfficeVersion).DisplayName | select -Unique
@@ -1236,29 +1252,35 @@ param(
             $version = $regProv.GetStringValue($HKLM, $path, "DisplayVersion").sValue
             
             if($name){
-                if($name -notmatch "Language Pack"){
-                    if($name.ToLower() -match $ProductName.ToLower()){
-                        if($path -notmatch "{.{8}-.{4}-.{4}-.{4}-0000000FF1CE}"){
-                            if($key.Split(".")[1] -ne $null){
-                                $prodName = $key.Split(".")[1]
-                            } else {
-                                $prodName = $key
-                            }
-                            $prodVersion = $version.Split(".")[0]
-                            $DisplayName = $name
+                if($name.ToLower() -match $ProductName.ToLower()){
+                    if($path -notmatch "{.{8}-.{4}-.{4}-.{4}-0000000FF1CE}"){
+                        if($key.Split(".")[1] -ne $null){
+                            $prodName = $key.Split(".")[1]
+                        } else {
+                            $prodName = $key
                         }
+                        $prodVersion = $version.Split(".")[0]
+                        $DisplayName = $name
+
+                        $object = New-Object PSObject -Property @{DisplayName = $DisplayName; Name = $prodName; Version = $prodVersion }
+                        $object | Add-Member MemberSet PSStandardMembers $PSStandardMembers
+                        $results += $object
                     }
                 }
             }
 
-            $Result = New-Object -TypeName PSObject
-            Add-Member -InputObject $Result -MemberType NoteProperty -Name "DisplayName" -Value $DisplayName 
-            Add-Member -InputObject $Result -MemberType NoteProperty -Name "Name" -Value $prodName
-            Add-Member -InputObject $Result -MemberType NoteProperty -Name "Version" -Value $prodVersion
+
+
+
+
+            #$Result = New-Object -TypeName PSObject
+            #Add-Member -InputObject $Result -MemberType NoteProperty -Name "DisplayName" -Value $DisplayName 
+            #Add-Member -InputObject $Result -MemberType NoteProperty -Name "Name" -Value $prodName
+            #Add-Member -InputObject $Result -MemberType NoteProperty -Name "Version" -Value $prodVersion
         }
     }
 
-    return $Result
+    return $Results
 
 }
 
