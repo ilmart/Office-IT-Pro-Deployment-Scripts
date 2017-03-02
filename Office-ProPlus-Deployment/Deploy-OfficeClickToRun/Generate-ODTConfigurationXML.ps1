@@ -83,7 +83,13 @@ param(
     [String]$DownloadPath = $NULL,
 
     [Parameter(ValueFromPipelineByPropertyName=$true)]
-    [string]$DefaultConfigurationXml = $NULL
+    [string]$DefaultConfigurationXml = $NULL,
+
+    [Parameter(ValueFromPipelineByPropertyName=$true)]
+    [System.Boolean]$LanguagePack = $false,
+
+    [Parameter(ValueFromPipelineByPropertyName=$true)]
+    [string[]]$LanguagePackIDs = @()
 )
 
 begin {
@@ -312,190 +318,194 @@ process {
         $splitProducts = $splitProducts | Sort-Object
     }
     
-    foreach ($productId in $splitProducts) {
-       if($msiLangPacks){
-          if($Languages -eq "CurrentOfficeLanguages") {
-            $officeLangs = $null
+    if(!$LanguagePack){
+        foreach ($productId in $splitProducts) {
+           if($msiLangPacks){
+              if($Languages -eq "CurrentOfficeLanguages") {
+                $officeLangs = $null
 
-            if($productId -match "Visio" -or $productId -match "Project"){
-              $languageIDs = @()
-            }
-          
-            if($productId -match "O365"){
-                if($mainOfficeProduct.GetType().Name -eq "Object[]"){
-                    $OfficeProduct = $mainOfficeProduct[0].DisplayName
-                } else {
-                    $OfficeProduct = $mainOfficeProduct.DisplayName
+                if($productId -match "Visio" -or $productId -match "Project"){
+                  $languageIDs = @()
                 }
-
-                if($OfficeProduct -notmatch "ProPlus"){
-                    $product = "Office"
-                }          
-            }
-          
-            if($productId -match "Visio"){
-              $product = "Visio"
-            }
-
-            if($productId -match "Project"){
-              $product = "Project"
-            }
-            
-            if($product){
-                if($product -eq "Office"){
-                    $languagePacks = GetLanguagePacks | ? {$_.DisplayName -match $product `
-                                                      -and $_.DisplayName -notmatch "Visio" `
-                                                      -and $_.DisplayName -notmatch "Project"}
-                } else {
-                    $languagePacks = GetLanguagePacks | ? {$_.DisplayName -match $product}
-                }
-                foreach($lang in $languagePacks){
-                    $languageIDs += $lang.LanguageID
-                }
-            }
-          }
-       }
-
-       $excludeApps = $NULL
-
-       if ($Languages -eq "CurrentOfficeLanguages") {
-           $additionalLanguages = New-Object System.Collections.ArrayList
-           $additionalLanguages += $languageIDs
-       }
-
-       if ($officeConfig.ClickToRunInstalled) {
-             $officeKeyPath = $officeConfig.OfficeKeyPath
-           
-           if ($productId.ToLower().StartsWith("o365")) {
-               $excludeApps = odtGetExcludedApps -ConfigDoc $ConfigFile -OfficeKeyPath $officeConfig.OfficeKeyPath -ProductId $productId
-           }
-           
-           if($Languages -eq 'AllInUseLanguages'){
-               foreach($product in $splitProducts){
-                   $languagePacks = GetLanguagePacks 
-
-                   foreach($pack in $languagePacks){
-                       $additionalLanguages += $pack.LanguageID
-                   }
-                   
-                   foreach($product in $splitProducts){               
-                       $officeAddLangs = odtGetOfficeLanguages -ConfigDoc $ConfigFile -OfficeKeyPath $officeConfig.OfficeKeyPath -ProductId $product
-                       $additionalLanguages += $officeAddLangs
-                   }     
-               }
-           } else {
-               $officeAddLangs = odtGetOfficeLanguages -ConfigDoc $ConfigFile -OfficeKeyPath $officeConfig.OfficeKeyPath -ProductId $productId
-           }
               
-       } else {
-         if ($officeExists) {
-             if($productId.ToLower().StartsWith("o365")) {
-                $excludeApps = officeGetExcludedApps -OfficeProducts $officeProducts -computer $computer -Credentials $Credentials
+                if($productId -match "O365"){
+                    if($mainOfficeProduct.GetType().Name -eq "Object[]"){
+                        $OfficeProduct = $mainOfficeProduct[0].DisplayName
+                    } else {
+                        $OfficeProduct = $mainOfficeProduct.DisplayName
+                    }
+
+                    if($OfficeProduct -notmatch "ProPlus"){
+                        $product = "Office"
+                    }          
+                }
+              
+                if($productId -match "Visio"){
+                  $product = "Visio"
+                }
+
+                if($productId -match "Project"){
+                  $product = "Project"
+                }
+                
+                if($product){
+                    if($product -eq "Office"){
+                        $languagePacks = GetLanguagePacks | ? {$_.DisplayName -match $product `
+                                                          -and $_.DisplayName -notmatch "Visio" `
+                                                          -and $_.DisplayName -notmatch "Project"}
+                    } else {
+                        $languagePacks = GetLanguagePacks | ? {$_.DisplayName -match $product}
+                    }
+                    foreach($lang in $languagePacks){
+                        $languageIDs += $lang.LanguageID
+                    }
+                }
+              }
+           }
+
+           $excludeApps = $NULL
+
+           if ($Languages -eq "CurrentOfficeLanguages") {
+               $additionalLanguages = New-Object System.Collections.ArrayList
+               $additionalLanguages += $languageIDs
+           }
+
+           if ($officeConfig.ClickToRunInstalled) {
+                 $officeKeyPath = $officeConfig.OfficeKeyPath
+               
+               if ($productId.ToLower().StartsWith("o365")) {
+                   $excludeApps = odtGetExcludedApps -ConfigDoc $ConfigFile -OfficeKeyPath $officeConfig.OfficeKeyPath -ProductId $productId
+               }
+               
+               if($Languages -eq 'AllInUseLanguages'){
+                   foreach($product in $splitProducts){
+                       $languagePacks = GetLanguagePacks 
+
+                       foreach($pack in $languagePacks){
+                           $additionalLanguages += $pack.LanguageID
+                       }
+                       
+                       foreach($product in $splitProducts){               
+                           $officeAddLangs = odtGetOfficeLanguages -ConfigDoc $ConfigFile -OfficeKeyPath $officeConfig.OfficeKeyPath -ProductId $product
+                           $additionalLanguages += $officeAddLangs
+                       }     
+                   }
+               } else {
+                   $officeAddLangs = odtGetOfficeLanguages -ConfigDoc $ConfigFile -OfficeKeyPath $officeConfig.OfficeKeyPath -ProductId $productId
+               }
+                  
+           } else {
+             if ($officeExists) {
+                 if($productId.ToLower().StartsWith("o365")) {
+                    $excludeApps = officeGetExcludedApps -OfficeProducts $officeProducts -computer $computer -Credentials $Credentials
+                 }
              }
-         }
   
-         $msiLanguages = msiGetOfficeLanguages -regProv $regProv
+             $msiLanguages = msiGetOfficeLanguages -regProv $regProv
 
-         foreach ($msiLanguage in $msiLanguages) {
-            $additionalLanguages += $msiLanguage
-         }
-         
-    
-         foreach ($officeLang in $officeLangs) {
-             if(!($additionalLanguages -contains $officeLang)){
-                $additionalLanguages += $officeLang
+             foreach ($msiLanguage in $msiLanguages) {
+                $additionalLanguages += $msiLanguage
              }
-         }
-       }
-
-       if ($officeAddLangs) {
-           if (($Languages -eq "CurrentOfficeLanguages") -or ($Languages -eq "AllInUseLanguages")) {
-               $additionalLanguages += $officeAddLangs
-           }
-       }
-
-       if ($additionalLanguages) {
-           $additionalLanguages = Get-Unique -InputObject $additionalLanguages -OnType
-           
-           [bool]$containsLang = $false
-           foreach ($additionalLanguage in $additionalLanguages) {
-             if ($primaryLanguage) {
-               if ($additionalLanguage) {
-                  if ($primaryLanguage.ToLower() -eq $additionalLanguage.ToLower()) {
-                     $containsLang = $true
-                  }
-               }
+             
+        
+             foreach ($officeLang in $officeLangs) {
+                 if(!($additionalLanguages -contains $officeLang)){
+                    $additionalLanguages += $officeLang
+                 }
              }
            }
-          
-           if ($containsLang) {
-               $tempLanguages = $additionalLanguages
-               $additionalLanguages = New-Object System.Collections.ArrayList
-               foreach($tempL in $tempLanguages){
-                  if($tempL -ne $primaryLanguage){
-                    $additionalLanguages.Add($tempL) | Out-Null
-                  }
-                  #$additionalLanguages.Remove($primaryLanguage)
+
+           if ($officeAddLangs) {
+               if (($Languages -eq "CurrentOfficeLanguages") -or ($Languages -eq "AllInUseLanguages")) {
+                   $additionalLanguages += $officeAddLangs
                }
            }
-       }
 
-       $ChannelName = $NULL
-       $ChannelDetect = Detect-Channel
-       if ($ChannelDetect) {
-          $ChannelName = $ChannelDetect.branch
-       }
-       
-       if ($officeConfig.ClickToRunInstalled) {
-          if ($Languages -eq "CurrentOfficeLanguages") {          
-            $officeAddLangs = odtGetOfficeLanguages -ConfigDoc $ConfigFile -OfficeKeyPath $officeConfig.OfficeKeyPath -ProductId $productId
-            if ($officeAddLangs) {
-               $additionalLanguages = New-Object System.Collections.ArrayList
-               foreach($language in $officeAddLangs){
-                   if(!($language.ToLower() -eq $primaryLanguage)){
-                       $additionalLanguages += $language
+           if ($additionalLanguages) {
+               $additionalLanguages = Get-Unique -InputObject $additionalLanguages -OnType
+               
+               [bool]$containsLang = $false
+               foreach ($additionalLanguage in $additionalLanguages) {
+                 if ($primaryLanguage) {
+                   if ($additionalLanguage) {
+                      if ($primaryLanguage.ToLower() -eq $additionalLanguage.ToLower()) {
+                         $containsLang = $true
+                      }
+                   }
+                 }
+               }
+              
+               if ($containsLang) {
+                   $tempLanguages = $additionalLanguages
+                   $additionalLanguages = New-Object System.Collections.ArrayList
+                   foreach($tempL in $tempLanguages){
+                      if($tempL -ne $primaryLanguage){
+                        $additionalLanguages.Add($tempL) | Out-Null
+                      }
+                      #$additionalLanguages.Remove($primaryLanguage)
                    }
                }
-            }       
-          }
-       }
+           }
 
-       odtAddProduct -ConfigDoc $ConfigFile -ProductId $productId -ExcludeApps $excludeApps -Version $officeConfig.Version `
-                     -Platform $productPlatform -ClientCulture $primaryLanguage -AdditionalLanguages $additionalLanguages -Channel $ChannelName
+           $ChannelName = $NULL
+           $ChannelDetect = Detect-Channel
+           if ($ChannelDetect) {
+              $ChannelName = $ChannelDetect.branch
+           }
+           
+           if ($officeConfig.ClickToRunInstalled) {
+              if ($Languages -eq "CurrentOfficeLanguages") {          
+                $officeAddLangs = odtGetOfficeLanguages -ConfigDoc $ConfigFile -OfficeKeyPath $officeConfig.OfficeKeyPath -ProductId $productId
+                if ($officeAddLangs) {
+                   $additionalLanguages = New-Object System.Collections.ArrayList
+                   foreach($language in $officeAddLangs){
+                       if(!($language.ToLower() -eq $primaryLanguage)){
+                           $additionalLanguages += $language
+                       }
+                   }
+                }       
+              }
+           }
+
+           odtAddProduct -ConfigDoc $ConfigFile -ProductId $productId -ExcludeApps $excludeApps -Version $officeConfig.Version `
+                         -Platform $productPlatform -ClientCulture $primaryLanguage -AdditionalLanguages $additionalLanguages -Channel $ChannelName
 
 
-       if ($officeConfig) {
-          if (($officeConfig.UpdatesEnabled) -or ($officeConfig.UpdateUrl) -or  ($officeConfig.UpdateDeadline)) {
-            odtAddUpdates -ConfigDoc $ConfigFile -Enabled $officeConfig.UpdatesEnabled -UpdatePath $officeConfig.UpdateUrl -Deadline $officeConfig.UpdateDeadline
-          }
-       }
-    }
+           if ($officeConfig) {
+              if (($officeConfig.UpdatesEnabled) -or ($officeConfig.UpdateUrl) -or  ($officeConfig.UpdateDeadline)) {
+                odtAddUpdates -ConfigDoc $ConfigFile -Enabled $officeConfig.UpdatesEnabled -UpdatePath $officeConfig.UpdateUrl -Deadline $officeConfig.UpdateDeadline
+              }
+           }
+        }
+    
+        $clickToRunKeys = 'SOFTWARE\Microsoft\Office\ClickToRun',
+                            'SOFTWARE\Microsoft\Office\15.0\ClickToRun'
 
-    $clickToRunKeys = 'SOFTWARE\Microsoft\Office\ClickToRun',
-                        'SOFTWARE\Microsoft\Office\15.0\ClickToRun'
-
-    foreach($key in $clickToRunKeys){
-        $configKeys = $regProv.EnumKey($HKLM, $key)
-        $clickToRunList = $configKeys.snames
-        foreach($list in $clickToRunList){
-            if($list -match 'Configuration'){
-                $configPath = Join-Path $key "Configuration"
-                $sharedLicense = $regProv.GetStringValue($HKLM, $configPath, "SharedComputerLicensing").sValue
-                if($sharedLicense -eq '1'){
-                   Set-ODTConfigProperties -SharedComputerLicensing "1" -ConfigDoc $ConfigFile
+        foreach($key in $clickToRunKeys){
+            $configKeys = $regProv.EnumKey($HKLM, $key)
+            $clickToRunList = $configKeys.snames
+            foreach($list in $clickToRunList){
+                if($list -match 'Configuration'){
+                    $configPath = Join-Path $key "Configuration"
+                    $sharedLicense = $regProv.GetStringValue($HKLM, $configPath, "SharedComputerLicensing").sValue
+                    if($sharedLicense -eq '1'){
+                       Set-ODTConfigProperties -SharedComputerLicensing "1" -ConfigDoc $ConfigFile
+                    }
                 }
             }
+        }  
+        
+        if ($IncludeUpdatePathAsSourcePath) {
+          if ($officeConfig.UpdateUrl) {
+              odtSetAdd -ConfigDoc $ConfigFile -SourcePath $officeConfig.UpdateUrl
+          }
         }
-    }  
-    
-    if ($IncludeUpdatePathAsSourcePath) {
-      if ($officeConfig.UpdateUrl) {
-          odtSetAdd -ConfigDoc $ConfigFile -SourcePath $officeConfig.UpdateUrl
-      }
-    }
 
-    if ($DownloadPath) {      
-          odtSetAdd -ConfigDoc $ConfigFile -DownloadPath $DownloadPath   
+        if ($DownloadPath) {      
+              odtSetAdd -ConfigDoc $ConfigFile -DownloadPath $DownloadPath   
+        }
+    } else {
+        odtAddLanguagePackProduct -ConfigDoc $ConfigFile -Platform $productPlatform -LanguageIds $LanguagePackIDs
     }
 
     $formattedXml = Format-XML ([xml]($ConfigFile)) -indent 4
@@ -1526,7 +1536,10 @@ function GetLanguagePacks {
             $path = Join-Path $installKey $uninstallKey
             $DisplayName = $regProv.GetStringValue($HKLM, $path, "DisplayName").sValue
 
-            if($DisplayName -match "Language Pack" -and $DisplayName -notmatch "Service Pack"){
+            if($DisplayName -match "Language Pack" -and $DisplayName -notmatch "Service Pack" `
+                                                   -and $DisplayName -notmatch "Visual Studio" `
+                                                   -and $DisplayName -notmatch "Team Foundation" `
+                                                   -and $DisplayName -notmatch "Portable Library"){
                 $languageId = $regProv.GetStringValue($HKLM, $path, "ShellUITransformLanguage").sValue
 
                 $object = New-Object PSObject -Property @{DisplayName = $DisplayName; LanguageID = $languageId.ToLower()}
@@ -1683,6 +1696,62 @@ function odtAddProduct() {
     }
     }
 
+}
+
+function odtAddLanguagePackProduct() {
+    param(
+       [Parameter(Mandatory=$true,ValueFromPipelineByPropertyName=$true)]
+       [System.XML.XMLDocument]$ConfigDoc = $NULL,
+
+       [Parameter(Mandatory=$false,ValueFromPipelineByPropertyName=$true)]
+       [string]$ProductId = "LanguagePack",
+
+       [Parameter(Mandatory=$true,ValueFromPipelineByPropertyName=$true)]
+       [string]$Platform = $NULL,
+
+       [Parameter(ValueFromPipelineByPropertyName=$true)]
+       [string[]]$LanguageIds = @()
+    )
+
+    [System.XML.XMLElement]$ConfigElement=$NULL
+    if($ConfigDoc.Configuration -eq $null){
+        $ConfigElement=$ConfigDoc.CreateElement("Configuration")
+        $ConfigDoc.appendChild($ConfigElement) | Out-Null
+    }
+
+    [System.XML.XMLElement]$AddElement=$NULL
+    if($ConfigFile.Configuration.Add -eq $null){
+        $AddElement=$ConfigDoc.CreateElement("Add")
+        $ConfigDoc.DocumentElement.appendChild($AddElement) | Out-Null
+    } else {
+        $AddElement = $ConfigDoc.Configuration.Add 
+    }
+
+    if ($Platform) {
+       $AddElement.SetAttribute("OfficeClientEdition", $Platform) | Out-Null
+    }
+
+    [System.XML.XMLElement]$ProductElement = $ConfigDoc.Configuration.Add.Product | where { $_.ID -eq $ProductId }
+    if($ProductId){
+        if($ProductElement -eq $null){
+            [System.XML.XMLElement]$ProductElement=$ConfigDoc.CreateElement("Product")
+            $AddElement.appendChild($ProductElement) | Out-Null
+            $ProductElement.SetAttribute("ID", $ProductId) | Out-Null
+        }
+    }
+
+    foreach($LanguageId in $LanguageIds){    
+       if ($LanguageId) {
+          if ($LanguageId.Length -gt 0) {
+            [System.XML.XMLElement]$LanguageElement = $ProductElement.Language | where { $_.ID -eq $LanguageId }
+            if($LanguageElement -eq $null){
+                [System.XML.XMLElement]$LanguageElement=$ConfigFile.CreateElement("Language")
+                $ProductElement.appendChild($LanguageElement) | Out-Null
+                $LanguageElement.SetAttribute("ID", $LanguageId.ToString().ToLower()) | Out-Null
+            }
+          }
+       }
+    }
 }
 
 function odtAddUpdates{
