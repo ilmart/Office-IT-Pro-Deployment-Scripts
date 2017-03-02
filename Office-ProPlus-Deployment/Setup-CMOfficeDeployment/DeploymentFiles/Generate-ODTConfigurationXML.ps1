@@ -12,29 +12,37 @@ Add-Type -ErrorAction SilentlyContinue -TypeDefinition @"
 
 Function Generate-ODTConfigurationXml {
 <#
-.Synopsis
+.SYNOPSIS
 Generates the Office Deployment Tool (ODT) Configuration XML from the current configuration of the target computer
+
 .DESCRIPTION
 This function will query the local or a remote computer and Generate the ODT configuration xml based on the local Office install
-and the local languages that are used on the local computer.  If Office isn't installed then it will utilize the configuration file
-specified in the 
+and the local languages that are used on the local computer.  If Office isn't installed then it will utilize a default configuration
+file.
+
 .NOTES   
 Name: Generate-ODTConfigurationXml
 Version: 1.0.3
 DateCreated: 2015-08-24
 DateUpdated: 2016-06-13
+
 .LINK
 https://github.com/OfficeDev/Office-IT-Pro-Deployment-Scripts
+
 .PARAMETER ComputerName
 The computer or list of computers from which to query 
+
 .PARAMETER Languages
 Will expand the output to include all installed Office products
+
 .PARAMETER TargetFilePath
 The path and file name of the file to save the Configuration xml
+
 .PARAMETER IncludeUpdatePathAsSourcePath
 If this parameter is set to $true then the SourcePath in the Configuration xml will be set to 
 the current UpdatePath on the local computer.  This assumes that the UpdatePath location has 
-the required files needed to run the installation 
+the required files needed to run the installation.
+
 .PARAMETER DefaultConfigurationXml
 This parameter sets the path to the Default Configuration XML file.  If Office is not installed on
 the computer that this script is run against it will default to this file in order to generate the 
@@ -42,27 +50,37 @@ ODT Configuration XML.  The default file should have the products that you would
 a workstation if Office isn't currently installed.  If this parameter is set to $NULL then it will
 not generate configuration XML if Office is not installed.  By default the script looks for a file
 called "DefaultConfiguration.xml" in the same directory as the script
+
 .EXAMPLE
 Generate-ODTConfigurationXml | fl
 Description:
 Will generate the Office Deployment Tool (ODT) configuration XML based on the local computer
+
 .EXAMPLE
 Generate-ODTConfigurationXml  -ComputerName client01,client02 | fl
 Description:
 Will generate the Office Deployment Tool (ODT) configuration XML based on the configuration of the remote computers client01 and client02
+
 .EXAMPLE
 Generate-ODTConfigurationXml -Languages OSandUserLanguages
 Description:
 Will generate the Office Deployment Tool (ODT) configuration XML based on the local computer and add the languages that the Operating System and the local users
 are currently using.
+
 .EXAMPLE
 Generate-ODTConfigurationXml -Languages OSLanguage
 Description:
 Will generate the Office Deployment Tool (ODT) configuration XML based on the local computer and add the Current UI Culture language of the Operating System
+
 .EXAMPLE
 Generate-ODTConfigurationXml -Languages CurrentOfficeLanguages
 Description:
 Will generate the Office Deployment Tool (ODT) configuration XML based on the local computer and add only add the Languages currently in use by the current Office installation
+
+.EXAMPLE
+Generate-ODTConfigurationXml -LanguagePack $true -LanguagePackIDs fr-fr,de-de,ar-sa -TargetFilePath $env:TEMP\LanguagePacks.xml
+Description:
+Will generate a configuration file used to install additional language packs for Office.
 #>
 
 [CmdletBinding(SupportsShouldProcess=$true)]
@@ -89,7 +107,10 @@ param(
     [System.Boolean]$LanguagePack = $false,
 
     [Parameter(ValueFromPipelineByPropertyName=$true)]
-    [string[]]$LanguagePackIDs = @()
+    [ValidateSet("en-us","ar-sa","bg-bg","zh-cn","zh-tw","hr-hr","cs-cz","da-dk","nl-nl","et-ee","fi-fi","fr-fr","de-de","el-gr","he-il","hi-in","hu-hu","id-id","it-it",
+                "ja-jp","kk-kz","ko-kr","lv-lv","lt-lt","ms-my","nb-no","pl-pl","pt-br","pt-pt","ro-ro","ru-ru","sr-latn-rs","sk-sk","sl-si","es-es","sv-se","th-th",
+                "tr-tr","uk-ua","vi-vn")] 
+    [string[]]$LanguagePackIDs
 )
 
 begin {
