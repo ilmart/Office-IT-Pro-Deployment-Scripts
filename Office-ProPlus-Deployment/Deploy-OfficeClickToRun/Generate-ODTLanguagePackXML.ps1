@@ -48,8 +48,7 @@ param(
 
 begin {   
     [string]$tempStr = $MyInvocation.MyCommand.Path
-    $scriptPath = GetScriptPath   
-    $DefaultConfigurationXml = (Join-Path $scriptPath "DefaultConfiguration.xml")   
+    $scriptPath = GetScriptPath     
 }
 
 process{
@@ -62,26 +61,7 @@ process{
     }
 
     [System.XML.XMLDocument]$ConfigFile = New-Object System.XML.XMLDocument
-
-    if ($DefaultConfigurationXml) {
-        if (Test-Path -Path $DefaultConfigurationXml) {
-           $ConfigFile.Load($DefaultConfigurationXml)
-    
-           $products = $ConfigFile.SelectNodes("/Configuration/Add/Product")
-           if ($products) {
-               foreach ($product in $products) {
-                  if ($productReleaseIds.Length -gt 0) { $productReleaseIds += "," }
-                  $productReleaseIds += $product.ID
-               }
-           }
-    
-           $addNode = $ConfigFile.SelectSingleNode("/Configuration/Add");
-           if ($addNode) {
-              $productPlatform = $addNode.OfficeClientEdition
-           }  
-        }
-    }
-    
+   
     #Generate the language pack xml file
     odtAddLanguagePackProduct -ConfigDoc $ConfigFile -Platform $OfficeClientEdition -LanguageIds $Languages
 
