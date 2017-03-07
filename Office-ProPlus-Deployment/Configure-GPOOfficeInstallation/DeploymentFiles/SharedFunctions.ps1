@@ -46,6 +46,9 @@ namespace Microsoft.Office
          VisioStdXVolume = 64,
          ProjectProXVolume = 128,
          ProjectStdXVolume = 256,
+         InfoPathRetail = 512,
+         SkypeforBusinessEntryRetail = 1024,
+         LyncEntryRetail = 2048,
      }
 }
 "
@@ -193,7 +196,6 @@ function Copy-ItemUNC() {    [CmdletBinding()]
 	    [String]$FileName    )    Process {       $drvLetter = FindAvailable       $Network = New-Object -ComObject "Wscript.Network"       try {           if (!($drvLetter.EndsWith(":"))) {               $drvLetter += ":"           }           $target = $drvLetter + "\"           $Network.MapNetworkDrive($drvLetter, $TargetPath)                                 #New-PSDrive -Name $drvLetter -PSProvider FileSystem -Root $TargetPath | Out-Null           Copy-Item -Path $SourcePath -Destination $target -Force       } finally {         #Remove-PSDrive $drvLetter         $Network.RemoveNetworkDrive($drvLetter)       }    }}
 
 function FindAvailable() {
-   #$drives = Get-PSDrive | select Name
    $drives = Get-WmiObject -Class Win32_LogicalDisk | select DeviceID
 
    for($n=90;$n -gt 68;$n--) {
@@ -290,6 +292,7 @@ begin {
 process {
 
  $results = new-object PSObject[] 0;
+ $MSexceptionList = "mui","visio","project","proofing","visual"
 
  foreach ($computer in $ComputerName) {
     if ($Credentials) {
@@ -454,10 +457,12 @@ process {
            $officeProduct = $false
            foreach ($officeInstallPath in $PathList) {
              if ($officeInstallPath) {
+                try{
                 $installReg = "^" + $installPath.Replace('\', '\\')
                 $installReg = $installReg.Replace('(', '\(')
                 $installReg = $installReg.Replace(')', '\)')
                 if ($officeInstallPath -match $installReg) { $officeProduct = $true }
+                } catch {}
              }
            }
 
@@ -465,8 +470,15 @@ process {
            
            $name = $regProv.GetStringValue($HKLM, $path, "DisplayName").sValue          
 
-           if ($ConfigItemList.Contains($key.ToUpper()) -and $name.ToUpper().Contains("MICROSOFT OFFICE") -and $name.ToUpper() -notlike "*MUI*" -and $name.ToUpper() -notlike "*VISIO*" -and $name.ToUpper() -notlike "*PROJECT*") {
-              $primaryOfficeProduct = $true
+           $primaryOfficeProduct = $true
+           if ($ConfigItemList.Contains($key.ToUpper()) -and $name.ToUpper().Contains("MICROSOFT OFFICE")) {
+              foreach($exception in $MSexceptionList){
+                 if($name.ToLower() -match $exception.ToLower()){
+                    $primaryOfficeProduct = $false
+                 }
+              }
+           } else {
+              $primaryOfficeProduct = $false
            }
 
            $clickToRunComponent = $regProv.GetDWORDValue($HKLM, $path, "ClickToRunComponent").uValue
@@ -538,6 +550,7 @@ process {
 Function Get-InstalledLanguages() {
     [CmdletBinding()]
     Param(
+        [string]$computer = $env:COMPUTERNAME
     )
     process {
        $returnLangs = @()
@@ -546,19 +559,52 @@ Function Get-InstalledLanguages() {
        if ($mainRegPath) {
           if (Test-Path -Path "hklm:\$mainRegPath\ProductReleaseIDs") {
                $activeConfig = Get-ItemProperty -Path "hklm:\$mainRegPath\ProductReleaseIDs"
-               $activeId = $activeConfig.ActiveConfiguration
-               $languages = Get-ChildItem -Path "hklm:\$mainRegPath\ProductReleaseIDs\$activeId\culture"
+               if($activeConfig.ActiveConfiguration){
+                  $activeId = $activeConfig.ActiveConfiguration
+                  $languages = Get-ChildItem -Path "hklm:\$mainRegPath\ProductReleaseIDs\$activeId\culture"
+                  foreach ($language in $languages) {
+                      $lang = Get-ItemProperty -Path  $language.pspath
+                      $keyName = $lang.PSChildName
+                      if ($keyName.Contains(".")) {
+                          $keyName = $keyName.Split(".")[0]
+                      }
+                      
+                      if ($keyName.ToLower() -ne "x-none") {
+                         $culture = New-Object system.globalization.cultureinfo($keyName)
+                         $returnLangs += $culture
+                      }
+                  }
+               } else {
+                  $HKLM = [UInt32] "0x80000002"
+                  $regProv = Get-Wmiobject -list "StdRegProv" -Namespace root\default -ComputerName $computer
 
-               foreach ($language in $languages) {
-                  $lang = Get-ItemProperty -Path  $language.pspath
-                  $keyName = $lang.PSChildName
-                  if ($keyName.Contains(".")) {
-                      $keyName = $keyName.Split(".")[0]
+                  $activeConfig = "hklm:\$mainRegPath\ProductReleaseIDs"
+                  $activeItems = Get-ChildItem -Path $activeConfig
+    
+                  foreach($config in $activeItems){
+                      $item = $config.Name | Split-Path -Leaf
+                      $path = Join-Path $activeConfig $item
+                  
+                      $pathItems = Get-ChildItem -Path $path
+                  
+                      foreach($pathItem in $pathItems){
+                          if($pathItem.Name -match "Culture"){
+                              $activeID = $item
+                          }
+                      }
                   }
 
-                  if ($keyName.ToLower() -ne "x-none") {
-                     $culture = New-Object system.globalization.cultureinfo($keyName)
-                     $returnLangs += $culture
+                  $languages = (Get-Item -Path "hklm:\$mainRegPath\ProductReleaseIDs\$activeId\culture").Property
+
+                  foreach ($language in $languages) {
+                      if ($language.Contains(".")) {
+                          $language = $keyName.Split(".")[0]
+                      }
+                      
+                      if ($language.ToLower() -ne "x-none") {
+                         $culture = New-Object system.globalization.cultureinfo($language)
+                         $returnLangs += $culture
+                      }
                   }
                }
           }
@@ -845,41 +891,46 @@ Function Validate-UpdateSource() {
         [string] $UpdateSource = $NULL,
 
         [Parameter()]
-        [string] $Bitness = $NULL,
+        [string] $OfficeClientEdition,
+        
+        [Parameter()]
+        [string] $Bitness = "x86",
 
         [Parameter()]
-        [string[]] $OfficeLanguages = $NULL,
+        [string[]] $OfficeLanguages = $null,
 
         [Parameter()]
         [bool]$ShowMissingFiles = $true
     )
+    
+    if(!$OfficeClientEdition)
+        {
+            #checking if office client edition is null, if not, set bitness to client office edition
+        }
+        else
+        {
+            $Bitness = $OfficeClientEdition
+        }
 
     [bool]$validUpdateSource = $true
     [string]$cabPath = ""
 
     if ($UpdateSource) {
         $mainRegPath = Get-OfficeCTRRegPath
-
-        if(!$Bitness){
-            $Bitness = "32"
-        }
-
-        $currentplatform = $Bitness
-
-        if ($currentplatform -eq "x64") {
-            $mainCab = "$UpdateSource\Office\Data\v64.cab"
-            $Bitness = "64"
-        }
-        else{
-            $mainCab = "$UpdateSource\Office\Data\v32.cab"
-            $Bitness = "32"
-        }
-
         if ($mainRegPath) {
             $configRegPath = $mainRegPath + "\Configuration"
             $currentplatform = (Get-ItemProperty HKLM:\$configRegPath -Name Platform -ErrorAction SilentlyContinue).Platform
             $updateToVersion = (Get-ItemProperty HKLM:\$configRegPath -Name UpdateToVersion -ErrorAction SilentlyContinue).UpdateToVersion
             $llcc = (Get-ItemProperty HKLM:\$configRegPath -Name ClientCulture -ErrorAction SilentlyContinue).ClientCulture
+        }
+
+        $currentplatform = $Bitness
+
+        $mainCab = "$UpdateSource\Office\Data\v32.cab"
+        $bitness = "32"
+        if ($currentplatform -eq "x64") {
+            $mainCab = "$UpdateSource\Office\Data\v64.cab"
+            $bitness = "64"
         }
 
         if (!($updateToVersion)) {
@@ -889,7 +940,7 @@ Function Validate-UpdateSource() {
            }
         }
 
-        [xml]$xml = Get-ChannelXml -Bitness $Bitness
+        [xml]$xml = Get-ChannelXml -Bitness $bitness
         if ($OfficeLanguages) {
           $languages = $OfficeLanguages
         } else {
@@ -927,10 +978,10 @@ Function Validate-UpdateSource() {
               $fileExists = $missingFiles.Contains($fullPath)
               if (!($fileExists)) {
                  $missingFiles.Add($fullPath)
-                 if($ShowMissingFiles -eq $true){
+                 if($ShowMissingFiles){
                     Write-Host "Source File Missing: $fullPath"
-                    Write-Log -Message "Source File Missing: $fullPath" -severity 1 -component "Office 365 Update Anywhere" 
                  }
+                 Write-Log -Message "Source File Missing: $fullPath" -severity 1 -component "Office 365 Update Anywhere" 
               }     
               $validUpdateSource = $false
            }
@@ -1041,40 +1092,40 @@ function Detect-Channel {
 
    )
 
-   Process {      
-      $channelXml = Get-ChannelXml
+Process {      
+   $channelXml = Get-ChannelXml
 
-      $CFGUpdateChannel = (Get-ItemProperty HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration -Name UpdateChannel -ErrorAction SilentlyContinue).UpdateChannel
-      $CFGOfficeMgmtCOM = (Get-ItemProperty HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration -Name OfficeMgmtCOM -ErrorAction SilentlyContinue).OfficeMgmtCOM      
-      $UPupdatechannel = (Get-ItemProperty HKLM:\SOFTWARE\Policies\Microsoft\office\16.0\common\officeupdate -Name UpdateChannel -ErrorAction SilentlyContinue).UpdateChannel      
-      $UPupdatepath = (Get-ItemProperty HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration -Name updatepath -ErrorAction SilentlyContinue).updatepath
-      $officemgmtcom = (Get-ItemProperty HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration -Name officemgmtcom -ErrorAction SilentlyContinue).officemgmtcom
-      $CFGUpdateUrl = (Get-ItemProperty HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration -Name UpdateUrl -ErrorAction SilentlyContinue).UpdateUrl
-      $currentBaseUrl = Get-OfficeCDNUrl
+   $UpdateChannel = (Get-ItemProperty HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration -Name UpdateChannel -ErrorAction SilentlyContinue).UpdateChannel      
+   $GPOUpdatePath = (Get-ItemProperty HKLM:\SOFTWARE\Policies\Microsoft\office\16.0\common\officeupdate -Name updatepath -ErrorAction SilentlyContinue).updatepath
+   $GPOUpdateBranch = (Get-ItemProperty HKLM:\SOFTWARE\Policies\Microsoft\office\16.0\common\officeupdate -Name UpdateBranch -ErrorAction SilentlyContinue).UpdateBranch
+   $GPOUpdateChannel = (Get-ItemProperty HKLM:\SOFTWARE\Policies\Microsoft\office\16.0\common\officeupdate -Name UpdateChannel -ErrorAction SilentlyContinue).UpdateChannel      
+   $UpdateUrl = (Get-ItemProperty HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration -Name UpdateUrl -ErrorAction SilentlyContinue).UpdateUrl
+   $currentBaseUrl = Get-OfficeCDNUrl
 
-      $CurrentChannel = $channelXml.UpdateFiles.baseURL | Where {$_.URL -eq $currentBaseUrl -and $_.branch -notcontains 'Business' }
+   $CurrentChannel = $channelXml.UpdateFiles.baseURL | Where {$_.URL -eq $currentBaseUrl -and $_.branch -notmatch 'Business' }
       
-      if($CFGUpdateUrl -ne $null -and $CFGUpdateUrl -like '*officecdn.microsoft.com*'){
-        $CurrentChannel = $channelXml.UpdateFiles.baseURL | Where {$_.URL -eq $CFGUpdateUrl -and $_.branch -notcontains 'Business' }  
-      }
-      if($officemgmtcom -ne $null -and $officemgmtcom -like '*officecdn.microsoft.com*'){
-        $CurrentChannel = $channelXml.UpdateFiles.baseURL | Where {$_.URL -eq $officemgmtcom -and $_.branch -notcontains 'Business' }  
-      }
-      if($UPupdatepath -ne $null -and $UPupdatepath -like '*officecdn.microsoft.com*'){
-        $CurrentChannel = $channelXml.UpdateFiles.baseURL | Where {$_.URL -eq $UPupdatepath -and $_.branch -notcontains 'Business' }  
-      }
-      if($UPupdatechannel -ne $null -and $UPupdatechannel -like '*officecdn.microsoft.com*'){
-        $CurrentChannel = $channelXml.UpdateFiles.baseURL | Where {$_.URL -eq $UPupdatechannel -and $_.branch -notcontains 'Business' }  
-      }
-      if($CFGOfficeMgmtCOM -ne $null -and $CFGOfficeMgmtCOM -like '*officecdn.microsoft.com*'){
-        $CurrentChannel = $channelXml.UpdateFiles.baseURL | Where {$_.URL -eq $CFGOfficeMgmtCOM -and $_.branch -notcontains 'Business' }  
-      }
-      if($CFGUpdateChannel -ne $null -and $CFGUpdateChannel -like '*officecdn.microsoft.com*'){
-        $CurrentChannel = $channelXml.UpdateFiles.baseURL | Where {$_.URL -eq $CFGUpdateChannel -and $_.branch -notcontains 'Business' }  
-      }
-
-      return $CurrentChannel
+   if($UpdateUrl -ne $null -and $UpdateUrl -like '*officecdn.microsoft.com*'){
+       $CurrentChannel = $channelXml.UpdateFiles.baseURL | Where {$_.URL -eq $UpdateUrl -and $_.branch -notmatch 'Business' }  
    }
+
+   if($GPOUpdateChannel -ne $null){
+     $CurrentChannel = $channelXml.UpdateFiles.baseURL | ? {$_.branch.ToLower() -eq $GPOUpdateChannel.ToLower()}         
+   }
+
+   if($GPOUpdateBranch -ne $null){
+     $CurrentChannel = $channelXml.UpdateFiles.baseURL | ? {$_.branch.ToLower() -eq $GPOUpdateBranch.ToLower()}  
+   }
+
+   if($GPOUpdatePath -ne $null -and $GPOUpdatePath -like '*officecdn.microsoft.com*'){
+     $CurrentChannel = $channelXml.UpdateFiles.baseURL | Where {$_.URL -eq $GPOUpdatePath -and $_.branch -notmatch 'Business' }  
+   }
+
+   if($UpdateChannel -ne $null -and $UpdateChannel -like '*officecdn.microsoft.com*'){
+     $CurrentChannel = $channelXml.UpdateFiles.baseURL | Where {$_.URL -eq $UpdateChannel -and $_.branch -notmatch 'Business' }  
+   }
+
+   return $CurrentChannel
+}
 
 }
 
@@ -1125,6 +1176,7 @@ Function GetScriptRoot() {
      if ($PSScriptRoot) {
        $scriptPath = $PSScriptRoot
      } else {
+       $scriptPath = split-path -parent $MyInvocation.MyCommand.Definition
        $scriptPath = (Get-Item -Path ".\").FullName
      }
 
@@ -1522,14 +1574,9 @@ function Get-ChannelXml() {
            }
        }
 
-       if($PSVersionTable.PSVersion.Major -ge '3'){
-           $tmpName = "o365client_$Bitness" + "bit.xml"
-           expand $XMLFilePath $env:TEMP -f:$tmpName | Out-Null
-           $tmpName = $env:TEMP + "\o365client_$Bitness" + "bit.xml"
-       }else {
-           $scriptPath = GetScriptRoot
-           $tmpName = $scriptPath + "\o365client_$Bitness" + "bit.xml"         
-       }
+       $tmpName = "o365client_" + $Bitness + "bit.xml"
+       expand $XMLFilePath $env:TEMP -f:$tmpName | Out-Null
+       $tmpName = $env:TEMP + "\" + $tmpName
        
        [xml]$channelXml = Get-Content $tmpName
 
@@ -1542,7 +1589,7 @@ function Get-ChannelUrl() {
    [CmdletBinding()]
    param( 
       [Parameter(Mandatory=$true)]
-      [Channel]$Channel
+      [OfficeChannel]$Channel
    )
 
    Process {
@@ -1777,10 +1824,6 @@ function Update-ConfigurationXml() {
       $scriptPath = GetScriptRoot
       $editFilePath = "$scriptPath\Edit-OfficeConfigurationFile.ps1"
 
-      if(!$Channel){
-          $Channel = 'Current'
-      }
-
       $languages = Get-XMLLanguages -Path $TargetFilePath
 
       if (Test-Path -Path $editFilePath) {
@@ -1927,4 +1970,134 @@ function Remove-ProductLanguage() {
         }
     }
    }
+}
+
+function Restart-ExplorerExe() {
+    $process = Get-Process
+    foreach($obj in $process){
+        if($obj.ProcessName -like "explorer*"){
+            kill $obj.ID
+            Start-Sleep -Seconds 20
+        }
+    }
+}
+
+function GetPinnedStartMenuApps {
+    $PreOfficeAppPinnedStatus = GetOfficeAppVerbStatus
+    $PinnedStartMenuApps = $PreOfficeAppPinnedStatus | ? {$_.PinToStartMenuAvailable -eq $false}
+    return $PinnedStartMenuApps.Name
+}
+
+function GetPinnedTaskbarApps {
+    $PreOfficeAppPinnedStatus = GetOfficeAppVerbStatus
+    $PinnedTaskbarApps = $PreOfficeAppPinnedStatus | ? {$_.PinToTaskbarAvailable -eq $false}
+    return $PinnedTaskbarApps.Name
+}
+
+function Save-OfficeSettings{
+    #Find the source files
+    Get-ChildItem C:\Users\$($env:USERNAME)\AppData\Roaming\Microsoft\Office -Recurse |  foreach {    
+        #Remove the original  root folder
+        $split = $_.Fullname  #-split '\\'
+        $DestFile =  $split.Substring($split.IndexOf("\Office")+8) #$split[1..($split.Length - 1)] -join '\' 
+
+        #Build the new  destination file path
+        $DestFile =  "C:\Users\$($env:USERNAME)\AppData\Roaming\TempRoamingOffice\$DestFile"
+
+        #Create a blank file and then overwrite it
+        $typ = if($_.GetType().Name.ToLower().Contains("file")){"file"}elseif($_.GetType().Name.ToLower().Contains("directory")){"directory"}else{"symboliclink"}
+
+        $null = New-Item -Path  $DestFile -Type $typ -Force
+        if($typ -eq "file"){
+            Copy-Item -Path  $_.FullName -Destination $DestFile -Force
+        }
+    }
+
+    Get-ChildItem C:\Users\$($env:USERNAME)\AppData\Roaming\Microsoft\Signatures -Recurse |  foreach {
+        #Remove the original  root folder
+        $split = $_.Fullname  #-split '\\'
+        $DestFile =  $split.Substring($split.IndexOf("\Signatures")+12) #$split[1..($split.Length - 1)] -join '\' 
+
+        #Build the new  destination file path
+        $DestFile =  "C:\Users\$($env:USERNAME)\AppData\Roaming\TempOffice\$DestFile"
+
+        #Create a blank file  and then overwrite it
+        $typ = if($_.GetType().Name.ToLower().Contains("file")){"file"}elseif($_.GetType().Name.ToLower().Contains("directory")){"directory"}else{"symboliclink"}
+
+        $null = New-Item -Path  $DestFile -Type $typ -Force
+        if($typ -eq "file"){
+            Copy-Item -Path  $_.FullName -Destination $DestFile -Force
+        }
+    }
+
+
+    Get-ChildItem C:\Users\$($env:USERNAME)\AppData\Local\Microsoft\Office -Recurse |  foreach {   
+        #Remove the original  root folder    
+        $split = $_.Fullname  #-split '\\'    
+        $DestFile =  $split.Substring($split.IndexOf("\Office")+8) #$split[1..($split.Length - 1)] -join '\' 
+    
+        #Build the new  destination file path    
+        $DestFile =  "C:\Users\$($env:USERNAME)\AppData\Roaming\TempLocalOffice\$DestFile"
+    
+        #Create a blank file and then overwrite it    
+        $typ = if($_.GetType().Name.ToLower().Contains("file")){"file"}elseif($_.GetType().Name.ToLower().Contains("directory")){"directory"}else{"symboliclink"}    
+        $null = New-Item -Path  $DestFile -Type $typ -Force
+        if($typ -eq "file"){
+            Copy-Item -Path  $_.FullName -Destination $DestFile -Force
+        }   
+    }       
+}
+
+function Set-OfficeSettings{
+
+    #Find the source files
+    Get-ChildItem C:\Users\$($env:USERNAME)\AppData\Roaming\TempRoamingOffice -Recurse |  foreach {
+        #Remove the original  root folder
+        $split = $_.Fullname  #-split '\\'
+        $DestFile =  $split.Substring($split.IndexOf("\TempRoamingOffice")+19) #$split[1..($split.Length - 1)] -join '\' 
+
+        #Build the new  destination file path
+        $DestFile =  "C:\Users\$($env:USERNAME)\AppData\Roaming\Microsoft\Office\$DestFile" 
+
+        #Create a blank file and then overwrite it
+
+        $typ = if($_.GetType().Name.ToLower().Contains("file")){"file"}elseif($_.GetType().Name.ToLower().Contains("directory")){"directory"}else{"symboliclink"}
+
+        $null = New-Item -Path  $DestFile -Type $typ -Force
+        if($typ -eq "file"){
+            Copy-Item -Path  $_.FullName -Destination $DestFile -Force
+        }
+    }
+
+    Get-ChildItem C:\Users\$($env:USERNAME)\AppData\Roaming\TempOffice -Recurse |  foreach {
+        #Remove the original  root folder
+        $split = $_.Fullname  #-split '\\'
+        $DestFile =  $split.Substring($split.IndexOf("\TempOffice")+12) #$split[1..($split.Length - 1)] -join '\' 
+
+        #Build the new  destination file path
+        $DestFile =  "C:\Users\$($env:USERNAME)\AppData\Roaming\Microsoft\Signatures\$DestFile"
+
+        #Create a blank file  and then overwrite it
+        $typ = if($_.GetType().Name.ToLower().Contains("file")){"file"}elseif($_.GetType().Name.ToLower().Contains("directory")){"directory"}else{"symboliclink"}
+        $null = New-Item -Path  $DestFile -Type $typ -Force
+        if($typ -eq "file"){
+            Copy-Item -Path  $_.FullName -Destination $DestFile -Force
+        }
+    }
+
+    Get-ChildItem C:\Users\$($env:USERNAME)\AppData\Roaming\TempLocalOffice -Recurse |  foreach {
+        #Remove the original  root folder
+        $split = $_.Fullname  #-split '\\'
+        $DestFile =  $split.Substring($split.IndexOf("\TempLocalOffice")+17) #$split[1..($split.Length - 1)] -join '\' 
+
+        #Build the new  destination file path
+        $DestFile =  " C:\Users\$($env:USERNAME)\AppData\Local\Microsoft\Office\$DestFile"
+
+        #Create a blank file  and then overwrite it
+        $typ = if($_.GetType().Name.ToLower().Contains("file")){"file"}elseif($_.GetType().Name.ToLower().Contains("directory")){"directory"}else{"symboliclink"}
+        $null = New-Item -Path  $DestFile -Type $typ -Force
+        if($typ -eq "file"){
+            Copy-Item -Path  $_.FullName -Destination $DestFile -Force
+        }
+    }
 }
