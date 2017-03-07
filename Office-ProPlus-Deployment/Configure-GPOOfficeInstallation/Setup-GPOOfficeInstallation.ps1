@@ -113,43 +113,33 @@ Download-GPOOfficeChannelFiles -OfficeFilesPath D:\OfficeChannelFiles -Bitness v
         [string] $Version = $NULL,
 
         [Parameter()]
-        [bool] $DownloadThrottledVersions = $true
+        [bool] $DownloadThrottledVersions = $true,
+
+        [Parameter()]
+        [int] $NumOfRetries = 5,
+        
+        [Parameter()]
+        [bool] $IncludeChannelInfo = $false,
+
+        [Parameter()]
+        [bool] $OverWrite = $false
         
     )
 
     Process {
-       if (Test-Path "$PSScriptRoot\Download-OfficeProPlusChannels.ps1") {
-         . "$PSScriptRoot\Download-OfficeProPlusChannels.ps1"
-       } else {
-       <# write log#>
-        $lineNum = Get-CurrentLineNumber    
-        $filName = Get-CurrentFileName 
-        WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Dependency file missing: $PSScriptRoot\Download-OfficeProPlusChannels.ps1"
-         throw "Dependency file missing: $PSScriptRoot\Download-OfficeProPlusChannels.ps1"
-       }
+        if (Test-Path "$PSScriptRoot\Download-OfficeProPlusChannels.ps1") {
+           . "$PSScriptRoot\Download-OfficeProPlusChannels.ps1"
+        } else {
+            $lineNum = Get-CurrentLineNumber    
+            $filName = Get-CurrentFileName 
 
-       $ChannelList = @("FirstReleaseCurrent", "Current", "FirstReleaseDeferred", "Deferred")
-       $ChannelXml = Get-ChannelXml -FolderPath $OfficeFilesPath -OverWrite $true
-
-       foreach ($Channel in $ChannelList) {
-         if ($Channels -contains $Channel) {
-
-            $selectChannel = $ChannelXml.UpdateFiles.baseURL | Where {$_.branch -eq $Channel.ToString() }
-            $latestVersion = Get-ChannelLatestVersion -ChannelUrl $selectChannel.URL -Channel $Channel
-            $ChannelShortName = ConvertChannelNameToShortName -ChannelName $Channel
-
-            if ($Version) {
-               $latestVersion = $Version
-            }
-
-            Download-OfficeProPlusChannels -TargetDirectory $OfficeFilesPath  -Channels $Channel -Version $latestVersion -UseChannelFolderShortName $true -Languages $Languages -Bitness $Bitness -DownloadThrottledVersions $DownloadThrottledVersions
-
-            $cabFilePath = "$env:TEMP/ofl.cab"
-            Copy-Item -Path $cabFilePath -Destination "$OfficeFilesPath\ofl.cab" -Force
-
-            $latestVersion = Get-ChannelLatestVersion -ChannelUrl $selectChannel.URL -Channel $Channel -FolderPath $OfficeFilesPath -OverWrite $true 
-         }
-       }
+            WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Dependency file missing: $PSScriptRoot\Download-OfficeProPlusChannels.ps1"
+           
+            throw "Dependency file missing: $PSScriptRoot\Download-OfficeProPlusChannels.ps1"
+        }
+       
+        Download-OfficeProPlusChannels -TargetDirectory $OfficeFilesPath  -Channels $Channels -Version $Version -UseChannelFolderShortName $true -Languages $Languages -Bitness $Bitness `
+                                       -DownloadThrottledVersions $DownloadThrottledVersions -NumOfRetries $NumOfRetries -IncludeChannelInfo $IncludeChannelInfo -OverWrite $OverWrite
     }
 }
 
@@ -823,143 +813,6 @@ Update-GPOSourceFiles -OfficeFilesPath D:\OfficeChannelFiles -Channels Deferred,
     }
 }
 
-function DownloadFile($url, $targetFile) {
-
-  for($t=1;$t -lt 10; $t++) {
-   try {
-       $uri = New-Object "System.Uri" "$url"
-       $request = [System.Net.HttpWebRequest]::Create($uri)
-       $request.set_Timeout(15000) #15 second timeout
-
-       $response = $request.GetResponse()
-       $totalLength = [System.Math]::Floor($response.get_ContentLength()/1024)
-       $responseStream = $response.GetResponseStream()
-       $targetStream = New-Object -TypeName System.IO.FileStream -ArgumentList $targetFile.replace('/','\'), Create
-       $buffer = new-object byte[] 8192KB
-       $count = $responseStream.Read($buffer,0,$buffer.length)
-       $downloadedBytes = $count
-
-       while ($count -gt 0)
-       {
-           $targetStream.Write($buffer, 0, $count)
-           $count = $responseStream.Read($buffer,0,$buffer.length)
-           $downloadedBytes = $downloadedBytes + $count
-           Write-Progress -id 3 -ParentId 2 -activity "Downloading file '$($url.split('/') | Select -Last 1)'" -status "Downloaded ($([System.Math]::Floor($downloadedBytes/1024))K of $($totalLength)K): " -PercentComplete ((([System.Math]::Floor($downloadedBytes/1024)) / $totalLength)  * 100)
-       }
-
-       Write-Progress -id 3 -ParentId 2 -activity "Finished downloading file '$($url.split('/') | Select -Last 1)'"
-
-       $targetStream.Flush()
-       $targetStream.Close()
-       $targetStream.Dispose()
-       $responseStream.Dispose()
-       break;
-   } catch {
-     $strError = $_.Message
-     if ($t -ge 9) {
-        throw
-     }
-   }
-   Start-Sleep -Milliseconds 500
-  }
-}
-
-function PurgeOlderVersions([string]$targetDirectory, [int]$numVersionsToKeep, [array]$channels){
-    Write-Host "Checking for Older Versions"
-    <# write log#>
-    $lineNum = Get-CurrentLineNumber    
-    $filName = Get-CurrentFileName 
-    WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Checking for Older Versions"
-                         
-    for($k = 0; $k -lt $channels.Count; $k++)
-    {
-        [array]$totalVersions = @()#declare empty array so each folder can be purged of older versions individually
-        [string]$channelName = $channels[$k]
-        [string]$shortChannelName = ConvertChannelNameToShortName -ChannelName $channelName
-        [string]$branchName = ConvertChannelNameToBranchName -ChannelName $channelName
-        [string]$channelName2 = ConvertBranchNameToChannelName -BranchName $channelName
-
-        $folderList = @($channelName, $shortChannelName, $channelName2, $branchName)
-
-        foreach ($folderName in $folderList) {
-            $directoryPath = $TargetDirectory.ToString() + '\'+ $folderName +'\Office\Data'
-
-            if (Test-Path -Path $directoryPath) {
-               break;
-            }
-        }
-
-        if (Test-Path -Path $directoryPath) {
-            Write-Host "`tChannel: $channelName2"
-            <# write log#>
-            $lineNum = Get-CurrentLineNumber    
-            $filName = Get-CurrentFileName 
-            WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Channel: $channelName2"
-             [bool]$versionsToRemove = $false
-
-            $files = Get-ChildItem $directoryPath  
-            Foreach($file in $files)
-            {        
-                if($file.GetType().Name -eq 'DirectoryInfo')
-                {
-                    $totalVersions+=$file.Name
-                }
-            }
-
-            #check if number of versions is greater than number of versions to hold onto, if not, then we don't need to do anything
-            if($totalVersions.Length -gt $numVersionsToKeep)
-            {
-                #sort array in numerical order
-                $totalVersions = $totalVersions | Sort-Object 
-               
-                #delete older versions
-                $numToDelete = $totalVersions.Length - $numVersionsToKeep
-                for($i = 1; $i -le $numToDelete; $i++)#loop through versions
-                {
-                     $versionsToRemove = $true
-                     $removeVersion = $totalVersions[($i-1)]
-                     Write-Host "`t`tRemoving Version: $removeVersion"
-                     <# write log#>
-                    $lineNum = Get-CurrentLineNumber    
-                    $filName = Get-CurrentFileName 
-                    WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Removing Version: $removeVersion"
-                     
-                     Foreach($file in $files)#loop through files
-                     {  #array is 0 based
-
-                        if($file.Name.Contains($removeVersion))
-                        {                               
-                            $folderPath = "$directoryPath\$file"
-
-                             for($t=1;$t -lt 5; $t++) {
-                               try {
-                                  Remove-Item -Recurse -Force $folderPath
-                                  break;
-                               } catch {
-                                 if ($t -ge 4) {
-                                    throw
-                                 }
-                               }
-                             }
-                        }
-                     }
-                }
-
-            }
-
-            if (!($versionsToRemove)) {
-                Write-Host "`t`tNo Versions to Remove"
-                 <# write log#>
-                $lineNum = Get-CurrentLineNumber    
-                $filName = Get-CurrentFileName 
-                WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "No Versions to Remove"
-            }
-        }
-
-
-    }    
-      
-}
 
 function ConvertChannelNameToShortName {
     Param(
@@ -1042,73 +895,6 @@ function ConvertBranchNameToChannelName {
     }
 }
 
-
-function UpdateConfigurationXml() {
-    [CmdletBinding()]	
-    Param
-	(
-		[Parameter(Mandatory=$true)]
-		[String]$Path = "",
-
-		[Parameter(Mandatory=$true)]
-		[String]$Channel = "",
-
-		[Parameter(Mandatory=$true)]
-		[String]$Bitness,
-
-		[Parameter()]
-		[String]$SourcePath = $NULL,
-		
-        [Parameter()]
-		[String]$Language
-        
-	) 
-    Process {
-	  $doc = [Xml] (Get-Content $Path)
-
-      $addNode = $doc.Configuration.Add
-      $languageNode = $addNode.Product.Language
-
-      if ($addNode.OfficeClientEdition) {
-          $addNode.OfficeClientEdition = $Bitness
-      } else {
-          $addNode.SetAttribute("OfficeClientEdition", $Bitness)
-      }
-
-      if ($addNode.Channel) {
-          $addNode.Channel = $Channel
-      } else {
-          $addNode.SetAttribute("Channel", $Channel)
-      }
-
-      if ($addNode.SourcePath) {
-          $addNode.SourcePath = $SourcePath
-      } else {
-          $addNode.SetAttribute("SourcePath", $SourcePath)
-      }
-
-      if($Language){
-          if ($languageNode.ID){
-              if($languageNode.ID -contains $Language) {
-                  Write-Host "$Language already exists in the xml"
-                  <# write log#>
-                $lineNum = Get-CurrentLineNumber    
-                $filName = Get-CurrentFileName 
-                WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "$Language already exists in the xml"
-              } else {
-                  $newLanguageElement = $doc.CreateElement("Language")
-                  $newLanguage = $doc.Configuration.Add.Product.AppendChild($newLanguageElement)
-                  $newLanguage.SetAttribute("ID", $Language)
-              }
-          } else {
-              $languageNode.SetAttribute("ID", $language)
-          }
-     }
-
-      $doc.Save($Path)
-    }
-}
-
 function CreateMainCabFiles() {
     [CmdletBinding()]	
     Param
@@ -1153,36 +939,6 @@ function CreateMainCabFiles() {
     }
 }
 
-function CheckIfVersionExists() {
-    [CmdletBinding()]	
-    Param
-	(
-	   [Parameter(Mandatory=$True)]
-	   [String]$Version,
-
-		[Parameter()]
-		[String]$Channel
-    )
-    Begin
-    {
-        $startLocation = Get-Location
-    }
-    Process {
-       LoadCMPrereqs
-
-       $VersionName = "$Channel - $Version"
-
-       $packageName = "Office 365 ProPlus"
-
-       $existingPackage = Get-CMPackage | Where { $_.Name -eq $packageName -and $_.Version -eq $Version }
-       if ($existingPackage) {
-         return $true
-       }
-
-       return $false
-    }
-}
-
 function CreateOfficeChannelShare() {
     [CmdletBinding()]	
     Param
@@ -1224,112 +980,6 @@ function CreateOfficeChannelShare() {
     return $sharePath
 }
 
-function GetSupportedPlatforms([String[]] $requiredPlatformNames){
-    $computerName = $env:COMPUTERNAME
-    #$assignedSite = $([WmiClass]"\\$computerName\ROOT\ccm:SMS_Client").getassignedsite()
-    $siteCode = Get-Site  
-    $filteredPlatforms = Get-WmiObject -ComputerName $computerName -Class SMS_SupportedPlatforms -Namespace "root\sms\site_$siteCode" | Where-Object {$_.IsSupported -eq $true -and  $_.OSName -like 'Win NT' -and ($_.OSMinVersion -match "6\.[0-9]{1,2}\.[0-9]{1,4}\.[0-9]{1,4}" -or $_.OSMinVersion -match "10\.[0-9]{1,2}\.[0-9]{1,4}\.[0-9]{1,4}") -and ($_.OSPlatform -like 'I386' -or $_.OSPlatform -like 'x64')}
-
-    $requiredPlatforms = $filteredPlatforms| Where-Object {$requiredPlatformNames.Contains($_.DisplayText) } #| Select DisplayText, OSMaxVersion, OSMinVersion, OSName, OSPlatform | Out-GridView
-
-    $supportedPlatforms = @()
-
-    foreach($p in $requiredPlatforms)
-    {
-        $osDetail = ([WmiClass]("\\$computerName\root\sms\site_$siteCode`:SMS_OS_Details")).CreateInstance()    
-        $osDetail.MaxVersion = $p.OSMaxVersion
-        $osDetail.MinVersion = $p.OSMinVersion
-        $osDetail.Name = $p.OSName
-        $osDetail.Platform = $p.OSPlatform
-
-        $supportedPlatforms += $osDetail
-    }
-
-    $supportedPlatforms
-}
-
-function CreateDownloadXmlFile([string]$Path, [string]$ConfigFileName){
-	#1 - Set the correct version number to update Source location
-	$sourceFilePath = "$path\$configFileName"
-    $localSourceFilePath = ".\$configFileName"
-
-    Set-Location $PSScriptRoot
-
-    if (Test-Path -Path $localSourceFilePath) {   
-	  $doc = [Xml] (Get-Content $localSourceFilePath)
-
-      $addNode = $doc.Configuration.Add
-	  $addNode.OfficeClientEdition = $bitness
-
-      $doc.Save($sourceFilePath)
-    } else {
-      $doc = New-Object System.XML.XMLDocument
-
-      $configuration = $doc.CreateElement("Configuration");
-      $a = $doc.AppendChild($configuration);
-
-      $addNode = $doc.CreateElement("Add");
-      $addNode.SetAttribute("OfficeClientEdition", $bitness)
-      if ($Version) {
-         if ($Version.Length -gt 0) {
-             $addNode.SetAttribute("Version", $Version)
-         }
-      }
-      $a = $doc.DocumentElement.AppendChild($addNode);
-
-      $addProduct = $doc.CreateElement("Product");
-      $addProduct.SetAttribute("ID", "O365ProPlusRetail")
-      $a = $addNode.AppendChild($addProduct);
-
-      $addLanguage = $doc.CreateElement("Language");
-      $addLanguage.SetAttribute("ID", "en-us")
-      $a = $addProduct.AppendChild($addLanguage);
-
-	  $doc.Save($sourceFilePath)
-    }
-}
-
-function CreateUpdateXmlFile([string]$Path, [string]$ConfigFileName, [string]$Bitness, [string]$Version){
-    $newConfigFileName = $ConfigFileName -replace '\.xml'
-    $newConfigFileName = $newConfigFileName + "$Bitness" + ".xml"
-
-    Copy-Item -Path ".\$ConfigFileName" -Destination ".\$newConfigFileName"
-    $ConfigFileName = $newConfigFileName
-
-    $testGroupFilePath = "$path\$ConfigFileName"
-    $localtestGroupFilePath = ".\$ConfigFileName"
-
-	$testGroupConfigContent = [Xml] (Get-Content $localtestGroupFilePath)
-
-	$addNode = $testGroupConfigContent.Configuration.Add
-	$addNode.OfficeClientEdition = $bitness
-    $addNode.SourcePath = $path	
-
-	$updatesNode = $testGroupConfigContent.Configuration.Updates
-	$updatesNode.UpdatePath = $path
-	$updatesNode.TargetVersion = $version
-
-	$testGroupConfigContent.Save($testGroupFilePath)
-    return $ConfigFileName
-}
-
-function DownloadBits() {
-    [CmdletBinding()]	
-    Param
-	(
-	    [Parameter()]
-	    [OfficeBranch]$Branch = $null
-	)
-
-    $DownloadScript = "$PSScriptRoot\Download-OfficeProPlusBranch.ps1"
-    if (Test-Path -Path $DownloadScript) {
-       
-
-
-
-    }
-}
-
 Function GetScriptRoot() {
  process {
      [string]$scriptPath = "."
@@ -1342,94 +992,6 @@ Function GetScriptRoot() {
 
      return $scriptPath
  }
-}
-
-function GetQueryStatus(){
-Param(
-    [string]$SiteCode,
-    [string]$PkgID
-)
-
-    $query = Get-WmiObject –NameSpace Root\SMS\Site_$SiteCode –Class SMS_DistributionDPStatus –Filter "PackageID='$PkgID'" | Select Name, MessageID, MessageState, LastUpdateDate
-
-    if ($query -eq $null)
-    {  
-    <# write log#>
-        $lineNum = Get-CurrentLineNumber    
-        $filName = Get-CurrentFileName 
-        WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "PackageID not found"
-        throw "PackageID not found"
-    }
-
-    foreach ($objItem in $query){
-
-        $DPName = $objItem.Name
-        $UpdDate = [System.Management.ManagementDateTimeconverter]::ToDateTime($objItem.LastUpdateDate)
-
-        switch ($objItem.MessageState)
-        {
-            1         {$Status = "Success"}
-            2         {$Status = "In Progress"}
-            3         {$Status = "Failed"}
-            4         {$Status = "Error"}
-        }
-
-        switch ($objItem.MessageID)
-        {
-            2300      {$Message = "Content is beginning to process"}
-            2301      {$Message = "Content has been processed successfully"}
-            2303      {$Message = "Failed to process package"}
-            2311      {$Message = "Distribution Manager has successfully created or updated the package"}
-            2303      {$Message = "Content was successfully refreshed"}
-            2323      {$Message = "Failed to initialize NAL"}
-            2324      {$Message = "Failed to access or create the content share"}
-            2330      {$Message = "Content was distributed to distribution point"}
-            2342      {$Message = "Content is beginning to distribute"}
-            2354      {$Message = "Failed to validate content status file"}
-            2357      {$Message = "Content transfer manager was instructed to send content to Distribution Point"}
-            2360      {$Message = "Status message 2360 unknown"}
-            2370      {$Message = "Failed to install distribution point"}
-            2371      {$Message = "Waiting for prestaged content"}
-            2372      {$Message = "Waiting for content"}
-            2376      {$Message = "Distribution Manager created a snapshot for content"}
-            2380      {$Message = "Content evaluation has started"}
-            2381      {$Message = "An evaluation task is running. Content was added to Queue"}
-            2382      {$Message = "Content hash is invalid"}
-            2383      {$Message = "Failed to validate content hash"}
-            2384      {$Message = "Content hash has been successfully verified"}
-            2391      {$Message = "Failed to connect to remote distribution point"}
-            2397      {$Message = "Detail will be available after the server finishes processing the messages"}
-            2398      {$Message = "Content Status not found"}
-            8203      {$Message = "Failed to update package"}
-            8204      {$Message = "Content is being distributed to the distribution Point"}
-            8211      {$Message = "Failed to update package"}
-        }
-
-        $Displayvalue = showTaskStatus -Operation $Status -Status $Message -DateTime $UpdDate
-
-    }
-
-    return $Displayvalue
-}
-
-function showTaskStatus() {
-    [CmdletBinding()]
-    Param(
-        [Parameter()]
-        [string] $Operation = "",
-
-        [Parameter()]
-        [string] $Status = "",
-
-        [Parameter()]
-        [string] $DateTime = ""
-    )
-
-    $Result = New-Object –TypeName PSObject 
-    Add-Member -InputObject $Result -MemberType NoteProperty -Name "Operation" -Value $Operation
-    Add-Member -InputObject $Result -MemberType NoteProperty -Name "Status" -Value $Status
-    Add-Member -InputObject $Result -MemberType NoteProperty -Name "DateTime" -Value $DateTime
-    return $Result
 }
 
 function Get-CurrentLineNumber {
