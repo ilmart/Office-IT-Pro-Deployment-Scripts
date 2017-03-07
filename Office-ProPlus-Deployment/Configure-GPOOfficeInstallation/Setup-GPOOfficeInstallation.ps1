@@ -110,7 +110,10 @@ Download-GPOOfficeChannelFiles -OfficeFilesPath D:\OfficeChannelFiles -Bitness v
         [Bitness] $Bitness = 0,
 
         [Parameter()]
-        [string] $Version = $NULL
+        [string] $Version = $NULL,
+
+        [Parameter()]
+        [bool] $DownloadThrottledVersions = $true
         
     )
 
@@ -139,7 +142,7 @@ Download-GPOOfficeChannelFiles -OfficeFilesPath D:\OfficeChannelFiles -Bitness v
                $latestVersion = $Version
             }
 
-            Download-OfficeProPlusChannels -TargetDirectory $OfficeFilesPath  -Channels $Channel -Version $latestVersion -UseChannelFolderShortName $true -Languages $Languages -Bitness $Bitness
+            Download-OfficeProPlusChannels -TargetDirectory $OfficeFilesPath  -Channels $Channel -Version $latestVersion -UseChannelFolderShortName $true -Languages $Languages -Bitness $Bitness -DownloadThrottledVersions $DownloadThrottledVersions
 
             $cabFilePath = "$env:TEMP/ofl.cab"
             Copy-Item -Path $cabFilePath -Destination "$OfficeFilesPath\ofl.cab" -Force
