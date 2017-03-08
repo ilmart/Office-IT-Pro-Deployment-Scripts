@@ -140,6 +140,9 @@ Download-GPOOfficeChannelFiles -OfficeFilesPath D:\OfficeChannelFiles -Bitness v
        
         Download-OfficeProPlusChannels -TargetDirectory $OfficeFilesPath  -Channels $Channels -Version $Version -UseChannelFolderShortName $true -Languages $Languages -Bitness $Bitness `
                                        -DownloadThrottledVersions $DownloadThrottledVersions -NumOfRetries $NumOfRetries -IncludeChannelInfo $IncludeChannelInfo -OverWrite $OverWrite
+
+        $cabFilePath = "$env:TEMP/ofl.cab"
+        Copy-Item -Path $cabFilePath -Destination "$OfficeFilesPath\ofl.cab" -Force
     }
 }
 
@@ -200,16 +203,6 @@ Configure-GPOOfficeDeployment -Channel Current -Bitness 64 -OfficeSourceFilesPat
                 Copy-Item -Path $cabFilePath -Destination "$PSScriptRoot\ofl.cab" -Force
             }
 
-            if (Test-Path "$PSScriptRoot\SharedFunctions.ps1") {
-                . "$PSScriptRoot\SharedFunctions.ps1"
-            } else {
-                $lineNum = Get-CurrentLineNumber    
-                $filName = Get-CurrentFileName             
-                WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Dependency file missing: $PSScriptRoot\SharedFunctions.ps1"
-               
-                throw "Dependency file missing: $PSScriptRoot\Download-OfficeProPlusChannels.ps1"
-            }
-
             $ChannelXml = Get-ChannelXml -FolderPath $OfficeFilesPath -OverWrite $false
            
             $selectChannel = $ChannelXml.UpdateFiles.baseURL | Where {$_.branch -eq $Channel.ToString() }
@@ -242,10 +235,10 @@ Configure-GPOOfficeDeployment -Channel Current -Bitness 64 -OfficeSourceFilesPat
                 }
 
                 if (!(Test-Path -Path $officeFileChannelPath)) {
-                    <# write log#>
                     $lineNum = Get-CurrentLineNumber    
                     $filName = Get-CurrentFileName 
                     WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Channel Folder Missing: $officeFileChannelPath - Ensure that you have downloaded the Channel you are trying to deploy"
+
                     throw "Channel Folder Missing: $officeFileChannelPath - Ensure that you have downloaded the Channel you are trying to deploy"
                 }
 
@@ -988,6 +981,184 @@ function CreateOfficeChannelShare() {
 
     $sharePath = "\\$env:COMPUTERNAME\$Name"
     return $sharePath
+}
+
+function Get-ChannelLatestVersion() {
+   [CmdletBinding()]
+   param( 
+      [Parameter(Mandatory=$true)]
+      [string]$ChannelUrl,
+
+      [Parameter(Mandatory=$true)]
+      [string]$Channel,
+
+	  [Parameter()]
+	  [string]$FolderPath = $null,
+
+	  [Parameter()]
+	  [bool]$OverWrite = $false
+   )
+
+   process {
+
+       [bool]$downloadFile = $true
+
+       $channelShortName = ConvertChannelNameToShortName -ChannelName $Channel
+
+       if (!($OverWrite)) {
+          if ($FolderPath) {
+              $CABFilePath = "$FolderPath\$channelShortName\Office\Data\v32.cab"
+
+              if (!(Test-Path -Path $CABFilePath)) {
+                 $CABFilePath = "$FolderPath\$channelShortName\Office\Data\v64.cab"
+              }
+
+              if (Test-Path -Path $CABFilePath) {
+                 $downloadFile = $false
+              } else {
+                throw "File missing $FolderPath\$channelShortName\Office\Data\v64.cab or $FolderPath\$channelShortName\Office\Data\v64.cab"
+              }
+          }
+       }
+
+       if ($downloadFile) {
+           $webclient = New-Object System.Net.WebClient
+           $CABFilePath = "$env:TEMP/v32.cab"
+           $XMLDownloadURL = "$ChannelUrl/Office/Data/v32.cab"
+           $webclient.DownloadFile($XMLDownloadURL,$CABFilePath)
+
+           if ($FolderPath) {
+             [System.IO.Directory]::CreateDirectory($FolderPath) | Out-Null
+
+             $channelShortName = ConvertChannelNameToShortName -ChannelName $Channel 
+
+             $targetFile = "$FolderPath\$channelShortName\v32.cab"
+             Copy-Item -Path $CABFilePath -Destination $targetFile -Force
+           }
+       }
+
+       $tmpName = "VersionDescriptor.xml"
+       expand $CABFilePath $env:TEMP -f:$tmpName | Out-Null
+       $tmpName = $env:TEMP + "\VersionDescriptor.xml"
+       [xml]$versionXml = Get-Content $tmpName
+
+       return $versionXml.Version.Available.Build
+   }
+}
+
+function Get-ChannelXml() {
+    [CmdletBinding()]	
+    Param
+	(
+	    [Parameter()]
+	    [string]$FolderPath = $null,
+
+	    [Parameter()]
+	    [bool]$OverWrite = $false,
+
+        [Parameter()]
+        [string] $Bitness = "32"
+	)
+
+   process {
+       $cabPath = "$PSScriptRoot\ofl.cab"
+       [bool]$downloadFile = $true
+
+       if (!($OverWrite)) {
+          if ($FolderPath) {
+              $XMLFilePath = "$FolderPath\ofl.cab"
+              if (Test-Path -Path $XMLFilePath) {
+                 $downloadFile = $false
+              } else {
+                throw "File missing $FolderPath\ofl.cab"
+              }
+          }
+       }
+
+       if ($downloadFile) {
+           $webclient = New-Object System.Net.WebClient
+           $XMLFilePath = "$env:TEMP/ofl.cab"
+           $XMLDownloadURL = "http://officecdn.microsoft.com/pr/wsus/ofl.cab"
+           $webclient.DownloadFile($XMLDownloadURL,$XMLFilePath)
+
+           if ($FolderPath) {
+             [System.IO.Directory]::CreateDirectory($FolderPath) | Out-Null
+             $targetFile = "$FolderPath\ofl.cab"
+             Copy-Item -Path $XMLFilePath -Destination $targetFile -Force
+           }
+       }
+
+       $tmpName = "o365client_" + $Bitness + "bit.xml"
+       expand $XMLFilePath $env:TEMP -f:$tmpName | Out-Null
+       $tmpName = $env:TEMP + "\" + $tmpName
+       
+       [xml]$channelXml = Get-Content $tmpName
+
+       return $channelXml
+   }
+
+}
+
+function Get-LargestDrive() {
+   [CmdletBinding()]
+   param( 
+   )
+   process {
+      $drives = Get-Partition | where {$_.DriveLetter}
+      $driveInfoList = @()
+
+      foreach ($drive in $drives) {
+          $driveLetter = $drive.DriveLetter
+          $deviceFilter = "DeviceID='" + $driveLetter + ":'" 
+ 
+          $driveInfo = Get-WmiObject Win32_LogicalDisk -ComputerName "." -Filter $deviceFilter
+          $driveInfoList += $driveInfo
+      }
+
+      $itemList = @()
+      foreach($item in $driveInfoList){
+          $itemList += $item.Freespace
+      }
+
+      $largItem = $itemList | measure -Maximum      
+      $largestItem = $largItem.Maximum
+
+      $FreeSpaceDrive = $driveInfoList | Where-Object {$_.Freespace -eq $largestItem}
+
+      return $FreeSpaceDrive.DeviceID
+   }
+}
+
+Function Get-LatestVersion() {
+  [CmdletBinding()]
+  Param(
+     [Parameter(Mandatory=$true)]
+     [string] $UpdateURLPath
+  )
+
+  process {
+    [array]$totalVersion = @()
+    $Version = $null
+
+    $LatestBranchVersionPath = $UpdateURLPath + '\Office\Data'
+    if(Test-Path $LatestBranchVersionPath){
+        $DirectoryList = Get-ChildItem $LatestBranchVersionPath
+        Foreach($listItem in $DirectoryList){
+            if($listItem.GetType().Name -eq 'DirectoryInfo'){
+                $totalVersion+=$listItem.Name
+            }
+        }
+    }
+
+    $totalVersion = $totalVersion | Sort-Object -Descending
+    
+    #sets version number to the newest version in directory for channel if version is not set by user in argument  
+    if($totalVersion.Count -gt 0){
+        $Version = $totalVersion[0]
+    }
+
+    return $Version
+  }
 }
 
 Function GetScriptRoot() {
