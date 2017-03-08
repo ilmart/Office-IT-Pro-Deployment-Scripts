@@ -200,6 +200,16 @@ Configure-GPOOfficeDeployment -Channel Current -Bitness 64 -OfficeSourceFilesPat
                 Copy-Item -Path $cabFilePath -Destination "$PSScriptRoot\ofl.cab" -Force
             }
 
+            if (Test-Path "$PSScriptRoot\SharedFunctions.ps1") {
+                . "$PSScriptRoot\SharedFunctions.ps1"
+            } else {
+                $lineNum = Get-CurrentLineNumber    
+                $filName = Get-CurrentFileName             
+                WriteToLogFile -LNumber $lineNum -FName $filName -ActionError "Dependency file missing: $PSScriptRoot\SharedFunctions.ps1"
+               
+                throw "Dependency file missing: $PSScriptRoot\Download-OfficeProPlusChannels.ps1"
+            }
+
             $ChannelXml = Get-ChannelXml -FolderPath $OfficeFilesPath -OverWrite $false
            
             $selectChannel = $ChannelXml.UpdateFiles.baseURL | Where {$_.branch -eq $Channel.ToString() }
