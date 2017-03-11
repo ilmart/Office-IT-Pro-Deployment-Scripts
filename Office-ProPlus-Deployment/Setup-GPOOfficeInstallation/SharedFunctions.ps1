@@ -1657,16 +1657,16 @@ function Get-ChannelLatestVersion() {
 
        if (!($OverWrite)) {
           if ($FolderPath) {
-              $CABFilePath = "$FolderPath\$channelShortName\v32.cab"
+              $CABFilePath = "$FolderPath\$channelShortName\Office\Data\v32.cab"
 
               if (!(Test-Path -Path $CABFilePath)) {
-                 $CABFilePath = "$FolderPath\$channelShortName\v64.cab"
+                 $CABFilePath = "$FolderPath\$channelShortName\Office\Data\v64.cab"
               }
 
               if (Test-Path -Path $CABFilePath) {
                  $downloadFile = $false
               } else {
-                throw "File missing $FolderPath\$channelShortName\v64.cab or $FolderPath\$channelShortName\v64.cab"
+                throw "File missing $FolderPath\$channelShortName\Office\Data\v64.cab or $FolderPath\$channelShortName\Office\Data\v64.cab"
               }
           }
        }
