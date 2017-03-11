@@ -81,6 +81,9 @@ Downloads the bitness of Office Click-to-Run "v32, v64, Both"
 .PARAMETER Version
 You can specify the version to download. 16.0.6868.2062. Version information can be found here https://technet.microsoft.com/en-us/library/mt592918.aspx
 
+.PARAMETER DownloadThrottledVersions
+Downloads the version of Office regardless of the throttle value. Set to $false to download non-throttled versions.
+
 .EXAMPLE
 Download-GPOOfficeChannelFiles -OfficeFilesPath D:\OfficeChannelFiles
 
