@@ -72,40 +72,23 @@ $(document).ready(function () {
         var xmlDoc = getXmlDocument();
         var products = xmlDoc.documentElement.getElementsByTagName("Add")[0].children;
 
-            for(var i= 0, len = products.length; i < len; i++){
-                var product = products[i];
-                var prodId = product.attributes[0].value
+        for(var i= 0, len = products.length; i < len; i++){
+            var product = products[i];
+            var prodId = product.attributes[0].value
 
-                if (prodId === "VisioProXVolume" || prodId == "VisioStdXVolume") {
-                    if (isChecked) {
-                        $("#VisioLicenseSection").show("slow");
-                    }
-                    else {
-                        $("#VisioLicenseSection").hide("slow");
-                    }
-                }
-                else if (prodId === "ProjectStdXVolume" || prodId == "ProjectProXVolume") {
+            if (productSkusRequireKey.indexOf(prodId) != -1) {
+                var sectionId = prodId + "LicenseSection";
+                AddActivationKeyBox(prodId);
 
-                    if (isChecked) {
-                        $("#ProjectLicenseSection").show("slow");
-                    }
-                    else {
-                        $("#ProjectLicenseSection").hide("slow");
-                    }                   
+                if (isChecked) {
+                    $("#" + sectionId).show("slow");
                 }
-                else if (productSkusRequireKey.indexOf(prodId) != -1) {
-                    var sectionId = prodId + "LicenseSection";
-                    AddActivationKeyBox(prodId);
-
-                    if (isChecked) {
-                        $("#" + sectionId).show("slow");
-                    }
-                    else {
-                        $("#" + sectionId).hide("slow");
-                    }                
-                }
+                else {
+                    $("#" + sectionId).hide("slow");
+                }                
             }
-});
+        }
+    });
 
     $('#txtPidKey').keydown(function (e) {
         var currentText = this.value;
@@ -666,41 +649,28 @@ $(document).ready(function () {
         var selectVisioKey = $("#txtVisioLicenseKey").val();
         var selectProjectKey = $("#txtProjectLicenseKey").val();
         var isChecked = $("#autoActivate")[0].checked;
-        
-            var addNode = xmlDoc.documentElement.getElementsByTagName("Add")[0];
-            //if (addNode) {
-            //    var productVisNode1 = getProductNode(addNode, "VisioProXVolume");
-            //    var productVisNode2 = getProductNode(addNode, "VisioStdXVolume");
-            //    var productProjNode1 = getProductNode(addNode, "ProjectProXVolume");
-            //    var productProjNode2 = getProductNode(addNode, "ProjectStdXVolume");
-            //    if (productVisNode1) {
-            //        if (selectVisioKey.length === 29 && isChecked) {
-            //            productVisNode1.setAttribute("PIDKEY", selectVisioKey);
-            //            //addNode.appendChild(productVisNode1)
-            //        } else
-            //            productVisNode1.removeAttribute("PIDKEY");
-            //    }
-            //    if (productVisNode2) {
-            //        if (selectVisioKey.length === 29 && isChecked)
-            //            productVisNode2.setAttribute("PIDKEY", selectVisioKey);
-            //        else
-            //            productVisNode2.removeAttribute("PIDKEY");
-            //    }
+        var products = xmlDoc.documentElement.getElementsByTagName("Add")[0].children;
 
-            //    if (productProjNode1) {
-            //        if (selectProjectKey.length === 29 && isChecked)
-            //            productProjNode1.setAttribute("PIDKEY", selectProjectKey);
-            //        else
-            //            productProjNode1.removeAttribute("PIDKEY");
-            //    }
-            //    if (productProjNode2) {
-            //        if (selectProjectKey.length === 29 && isChecked)
-            //            productProjNode2.setAttribute("PIDKEY", selectProjectKey);
-            //        else
-            //            productProjNode2.removeAttribute("PIDKEY");
-            //    }
+        for (var i = 0, len = products.length; i < len; i++) {
+            var prodId = products[i].attributes[0].value
 
-            //}
+            if (productSkusRequireKey.indexOf(prodId) != -1)
+            {
+                var key = $('#txt' + prodId + 'LicenseKey')[0].value;
+                var addNode = xmlDoc.documentElement.getElementsByTagName("Add")[0];
+                var node = getProductNode(addNode, prodId);
+
+                if (key.length === 26 && isChecked) {
+                    node.setAttribute("PIDKEY", key);
+                }
+
+                if(!isChecked){
+                    node.removeAttribute("PIDKEY");
+
+                }
+            }
+          
+        }
         
         displayXml(xmlDoc);
         return false;
@@ -1944,13 +1914,6 @@ function odtAddProduct(xmlDoc) {
         $("#ProjectLicenseSection").show("slow");
     }
 
-        //if (selectProjectKey) {
-        //    productNode.setAttribute("PIDKEY", selectProjectKey);
-        //} else {
-        //    productNode.removeAttribute("PIDKEY");
-        //}
-    
-
     var langNode = getLanguageNode(productNode, selectLanguage);
     if (!(langNode)) {
         langNode = xmlDoc.createElement("Language");
@@ -2030,11 +1993,6 @@ function odtRemoveProduct(xmlDoc) {
         $("#btRemoveProduct").prop("disabled", false);
         $("#btAddLanguage").prop("disabled", false);
     }
-
-    //$("#removeAllProducts").removeClass('btn-primary');
-    //$("#removeSelectProducts").removeClass('btn-primary');
-    //$("#removeAllProducts").removeClass('active');
-    //$("#removeSelectProducts").removeClass('active');
 
     $("#btAddProduct").text('Add Product');
 }
