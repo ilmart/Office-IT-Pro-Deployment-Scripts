@@ -70,25 +70,41 @@ $(document).ready(function () {
     $('#autoActivate').change(function(e){
         var isChecked = $("#autoActivate")[0].checked;
         var xmlDoc = getXmlDocument();
-        if (isChecked) {
-            var addNode = xmlDoc.documentElement.getElementsByTagName("Add")[0];
-            if (addNode) {
-                var productVisNode1 = getProductNode(addNode, "VisioProXVolume");
-                var productVisNode2 = getProductNode(addNode, "VisioStdXVolume");
-                var productProjNode1 = getProductNode(addNode, "ProjectProXVolume");
-                var productProjNode2 = getProductNode(addNode, "ProjectStdXVolume");
-                if (productVisNode1 || productVisNode2) {
-                    $("#VisioLicenseSection").show("slow");
+        var products = xmlDoc.documentElement.getElementsByTagName("Add")[0].children;
+
+            for(var i= 0, len = products.length; i < len; i++){
+                var product = products[i];
+                var prodId = product.attributes[0].value
+
+                if (prodId === "VisioProXVolume" || prodId == "VisioStdXVolume") {
+                    if (isChecked) {
+                        $("#VisioLicenseSection").show("slow");
+                    }
+                    else {
+                        $("#VisioLicenseSection").hide("slow");
+                    }
                 }
-                if (productProjNode1 || productProjNode2) {
-                    $("#ProjectLicenseSection").show("slow");
+                else if (prodId === "ProjectStdXVolume" || prodId == "ProjectProXVolume") {
+
+                    if (isChecked) {
+                        $("#ProjectLicenseSection").show("slow");
+                    }
+                    else {
+                        $("#ProjectLicenseSection").hide("slow");
+                    }                   
+                }
+                else if (productSkusRequireKey.indexOf(prodId) != -1) {
+                    var sectionId = prodId + "LicenseSection";
+                    AddActivationKeyBox(prodId);
+
+                    if (isChecked) {
+                        $("#" + sectionId).show("slow");
+                    }
+                    else {
+                        $("#" + sectionId).hide("slow");
+                    }                
                 }
             }
-        } else {
-            $("#ProjectLicenseSection").hide("slow");
-            $("#VisioLicenseSection").hide("slow");
-        }
-
 });
 
     $('#txtPidKey').keydown(function (e) {
@@ -253,54 +269,6 @@ $(document).ready(function () {
         }
     });
 
-    $('#txtVisioLicenseKey').keyup(function () {
-        validateVisio(this);
-
-        var currentText = this.value;
-        if (currentText.length >= 31) {
-
-            while (currentText.indexOf("-") > -1) {
-                currentText = currentText.replace("-", "");
-            }
-
-            var newCode = currentText.substring(0, 5) + "-" +
-                          currentText.substring(5, 10) + "-" +
-                          currentText.substring(10, 15) + "-" +
-                          currentText.substring(15, 20) + "-" +
-                          currentText.substring(20, 25);
-
-            var start = document.getElementById("txtVisioLicenseKey").selectionStart;
-            var end = document.getElementById("txtVisioLicenseKey").selectionEnd;
-            this.value = newCode;
-            document.getElementById("txtVisioLicenseKey").selectionStart = start;
-            document.getElementById("txtVisioLicenseKey").selectionEnd = end;
-        }
-    });
-
-    $('#txtProjectLicenseKey').keyup(function () {
-        validateVisio(this);
-
-        var currentText = this.value;
-        if (currentText.length >= 31) {
-
-            while (currentText.indexOf("-") > -1) {
-                currentText = currentText.replace("-", "");
-            }
-
-            var newCode = currentText.substring(0, 5) + "-" +
-                          currentText.substring(5, 10) + "-" +
-                          currentText.substring(10, 15) + "-" +
-                          currentText.substring(15, 20) + "-" +
-                          currentText.substring(20, 25);
-
-            var start = document.getElementById("txtProjectLicenseKey").selectionStart;
-            var end = document.getElementById("txtProjectLicenseKey").selectionEnd;
-            this.value = newCode;
-            document.getElementById("txtProjectLicenseKey").selectionStart = start;
-            document.getElementById("txtProjectLicenseKey").selectionEnd = end;
-        }
-    });
-
     $("#btAddProduct").on('click', function () {
         if ($("#cbProduct").val() === "LanguagePack" && $("#btAddProduct").text() !== "Edit Product") {
             alert("If creating a language pack, please set the first language to the client computer's culture language.  If the first language set does not match the client's culture language then the chosen language will be installed as the Shell UI language.");
@@ -333,10 +301,6 @@ $(document).ready(function () {
         displayXml(xmlDoc);
 
         $("#btAddProduct").text('Edit Product');
-
-
-        
-
 
         return false;
     });
@@ -704,39 +668,39 @@ $(document).ready(function () {
         var isChecked = $("#autoActivate")[0].checked;
         
             var addNode = xmlDoc.documentElement.getElementsByTagName("Add")[0];
-            if (addNode) {
-                var productVisNode1 = getProductNode(addNode, "VisioProXVolume");
-                var productVisNode2 = getProductNode(addNode, "VisioStdXVolume");
-                var productProjNode1 = getProductNode(addNode, "ProjectProXVolume");
-                var productProjNode2 = getProductNode(addNode, "ProjectStdXVolume");
-                if (productVisNode1) {
-                    if (selectVisioKey.length === 29 && isChecked) {
-                        productVisNode1.setAttribute("PIDKEY", selectVisioKey);
-                        //addNode.appendChild(productVisNode1)
-                    } else
-                        productVisNode1.removeAttribute("PIDKEY");
-                }
-                if (productVisNode2) {
-                    if (selectVisioKey.length === 29 && isChecked)
-                        productVisNode2.setAttribute("PIDKEY", selectVisioKey);
-                    else
-                        productVisNode2.removeAttribute("PIDKEY");
-                }
+            //if (addNode) {
+            //    var productVisNode1 = getProductNode(addNode, "VisioProXVolume");
+            //    var productVisNode2 = getProductNode(addNode, "VisioStdXVolume");
+            //    var productProjNode1 = getProductNode(addNode, "ProjectProXVolume");
+            //    var productProjNode2 = getProductNode(addNode, "ProjectStdXVolume");
+            //    if (productVisNode1) {
+            //        if (selectVisioKey.length === 29 && isChecked) {
+            //            productVisNode1.setAttribute("PIDKEY", selectVisioKey);
+            //            //addNode.appendChild(productVisNode1)
+            //        } else
+            //            productVisNode1.removeAttribute("PIDKEY");
+            //    }
+            //    if (productVisNode2) {
+            //        if (selectVisioKey.length === 29 && isChecked)
+            //            productVisNode2.setAttribute("PIDKEY", selectVisioKey);
+            //        else
+            //            productVisNode2.removeAttribute("PIDKEY");
+            //    }
 
-                if (productProjNode1) {
-                    if (selectProjectKey.length === 29 && isChecked)
-                        productProjNode1.setAttribute("PIDKEY", selectProjectKey);
-                    else
-                        productProjNode1.removeAttribute("PIDKEY");
-                }
-                if (productProjNode2) {
-                    if (selectProjectKey.length === 29 && isChecked)
-                        productProjNode2.setAttribute("PIDKEY", selectProjectKey);
-                    else
-                        productProjNode2.removeAttribute("PIDKEY");
-                }
+            //    if (productProjNode1) {
+            //        if (selectProjectKey.length === 29 && isChecked)
+            //            productProjNode1.setAttribute("PIDKEY", selectProjectKey);
+            //        else
+            //            productProjNode1.removeAttribute("PIDKEY");
+            //    }
+            //    if (productProjNode2) {
+            //        if (selectProjectKey.length === 29 && isChecked)
+            //            productProjNode2.setAttribute("PIDKEY", selectProjectKey);
+            //        else
+            //            productProjNode2.removeAttribute("PIDKEY");
+            //    }
 
-            }
+            //}
         
         displayXml(xmlDoc);
         return false;
@@ -876,26 +840,14 @@ $(document).ready(function () {
 
 
     if (productId.indexOf("Visio") >= 0 || productId.indexOf("Project") >= 0 || productId.indexOf("Language") >= 0) {
-        //$("#cbExcludeApp").parent("div").addClass("is-disabled");
         $("#btAddExcludeApp").prop('disabled', true);
         $("#btRemoveExcludeApp").prop('disabled', true);
 
     }
     else {
-        //$("#cbExcludeApp").parent("div").removeClass("is-disabled");
         $("#btAddExcludeApp").prop('disabled', false);
         $("#btRemoveExcludeApp").prop('disabled', false);
     }
-
-    //if (typeof ($.cookie('xmlHistory') !== undefined)) {
-    //    $.removeCookie('xmlHistory', { path: '/' });
-    //}
-
-    //if (sessionStorage.getItem('xmlHistory') !== null) {
-    //    sessionStorage.removeItem('xmlHistory'); 
-    //}
-
-
 });
 
 (function ($) {
@@ -981,6 +933,13 @@ $(document).ready(function () {
 
 })(jQuery);
 
+function AddActivationKeyBox(product) {
+    var panel = $('#LicenseSection');
+    var textBoxId = 'txt'+product+'LicenseKey';
+    var textBox = "<div id='" + product + "LicenseSection' style='display:none'><table><tr><td><label class='ms-Label'>" + product + " License Key</label></td><td><i id='PACKAGEGUIDInfoIcon' class='ms-Icon ms-Icon--circleInfo ms-fontColor-blue' style='width: 30px;text-align: center;cursor:pointer;' onclick='toggleInfo('PACKAGEGUIDInfo', this)'></i></td></tr></table><div><input id='" + textBoxId + "' type='text' pattern='^.{5}-.{5}-.{5}-.{5}-.{5}$'class='ms-TextField-field' placeholder='XXXXX-XXXX-XXXX-XXXX-XXXXX'data-error='This must be a valid license key' maxlength='26' onkeydown='validateActivationKey(this.id)'><span id='" + product + "LicenseSignal' class='glyphicon form-control-feedback' aria-hidden='true'></span></div></div>";
+    panel.append(textBox);
+}
+
 function GetVersionData() {
     $.ajax({
         url: "https://officeproplusinfo2.azurewebsites.net/api/Channel",
@@ -1047,8 +1006,7 @@ function redoXmlChange() {
 }
 
 function fixDatePicker() {
-    //ms-DatePicker
-    //ms-TextField
+
     var datePickers = document.getElementsByClassName("ms-DatePicker");
 
     for (var i = 0; i < datePickers.length; i++) {
@@ -1112,10 +1070,8 @@ function changeVersions(version) {
         $("#mgtToggleGroup").hide("slow");
         $('#mgtToggle').prop("checked", false);
         $("#pinIconsProperty").hide("slow");
-        //$("#txtLegacyVersion").removeAttr("disabled");
 
         $("#autoUpgradeToggle").show("slow");
-        //16.0.4229.1024
         $("#txtLegacyVersion").attr("placeholder", versions[0]);
         $("#txtTargetVersion").attr("placeholder", versions[0]);
         console.trace('2013 branch', versions[0]);
@@ -1148,15 +1104,12 @@ function changeVersions(version) {
     }
     if (version == "2016") {        
         $("#branchSection").show("slow");
-        //$("#ProjectLicenseSection").hide("slow");
-        //$("#VisioLicenseSection").hide("slow");
         $("#newVersionSection").show("slow");
         $("#updateBranchSection").show("slow");
         $("#mgtToggleGroup").show("slow");
         $("#autoUpgradeToggle").hide("slow");
         $("#pinIconsProperty").show("slow");
         $("#txtTargetVersion").val('');
-        //$("#txtLegacyVersion").attr('disabled', 'disabled');
 
         $("#txtPidKey").val("");
 
@@ -1736,38 +1689,19 @@ function validatePackageGuid(t) {
 
 }
 
+function validateActivationKey(id) {
+    var currentText = $('#'+id)[0].value;
+    var textLength = currentText.length
+    var keyCode = event.keyCode || event.charCode;
 
-
-
-function validateVisio(t) {
-    //if (!this.value.match(/[0-9]/)) {
-    //    this.value = this.value.replace(/[^0-9]/g, '');
-    //}
-
-    var firstPart = "";
-    var secondPart = "";
-    var thirdPart = "";
-    var fourthPart = "";
-    var fifthPart = "";
-
-    var currentText = t.value;
-    for (var i = 1; i < 7; i++)
-        currentText = currentText.replace("-", "");
-    
-    if (currentText.length > 20)
-        firstPart = currentText.substring(0, 5) + "-" + currentText.substring(5, 10) + "-" + currentText.substring(10, 15) + "-" + currentText.substring(15, 20) + "-" + currentText.substring(20);
-    else if (currentText.length > 15)
-        firstPart = currentText.substring(0, 5) + "-" + currentText.substring(5, 10) + "-" + currentText.substring(10, 15) + "-" + currentText.substring(15);
-    else if (currentText.length > 10) {
-        firstPart = currentText.substring(0, 5) + "-" + currentText.substring(5, 10) + "-" + currentText.substring(10);
-        secondPart = currentText.substring(5, 10)// gotta check this cause this is ABSOLUTE HORSESHIT!!!!!!!!!this is bullshit, doesn't follow the rules of a fucking substring.
+    if (keyCode != 8 && keyCode != 46) {
+        if (textLength == 5 || textLength == 10 || textLength == 15 || textLength == 20) {
+            $('#' + id)[0].value += '-'
+        }
     }
-    else if (currentText.length > 5)
-        firstPart = currentText.substring(0, 5) + "-" + currentText.substring(5);
-    else
-        firstPart = currentText
-        t.value = firstPart;
+    
 }
+
 
 
 function changeSelectedLanguage() {
@@ -3669,7 +3603,20 @@ var productSkus2016Names = [
     'Project Professional 2016 (Volume License)',
     'Project Standard 2016 (Volume License)',
     'Skype for Business 2016',
-    'Skype for Business Basic 2016'
+    'Skype for Business Basic 2016',
+    'Access 2016 Retail',
+    'Excel 2016 Retail',
+    'Office Home & Business 2016',
+    'Office Home & Student 2016',
+    'InfoPath 2016 Retail ',
+    'Office 365 Home Premium Retail',
+    'Office 365 small Business Premium Small Retail',
+    'OneNote 2016 Retail',
+    'Outlook 2016 Retail',
+    'PowerPoint 2016 Retail',
+    'Project Standard 2016 Retail',
+    'Publisher 2016 Retail',
+    'Word 2016 Retail'
 
 ];
 
@@ -3684,8 +3631,43 @@ var productSkus2016Values = [
     'ProjectProXVolume',
     'ProjectStdXVolume',
     'SkypeforBusinessRetail',
-    'SkypeforBusinessEntryRetail'
+    'SkypeforBusinessEntryRetail',
+    'AccessRetail',
+    'ExcelRetail',
+    'HomeBusinessRetail',
+    'HomeStudentRetail',
+    'InfoPathRetail',
+    'ProfessionalRetail',
+    'O365HomePremRetail',
+    'O365SmallBusPremRetail', 
+    'OneNoteRetail',
+    'OutlookRetail',
+    'PowerPointRetail',
+    'ProjectStdRetail',
+    'PublisherRetail',
+    'WordRetail'
+];
 
+var productSkusRequireKey = [
+
+    'AccessRetail',
+    'ExcelRetail',
+    'HomeBusinessRetail',
+    'HomeStudentRetail',
+    'InfoPathRetail',
+    'ProfessionalRetail',
+    'O365HomePremRetail',
+    'O365SmallBusPremRetail',
+    'OneNoteRetail',
+    'OutlookRetail',
+    'PowerPointRetail',
+    'ProjectStdRetail',
+    'PublisherRetail',
+    'WordRetail',
+    'VisioProXVolume',
+    'VisioStdXVolume',
+    'ProjectProXVolume',
+    'ProjectStdXVolume',
 ];
 
 var productSkus2013Names = [

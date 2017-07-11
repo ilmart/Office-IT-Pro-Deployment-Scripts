@@ -1124,44 +1124,47 @@
                                                 <span class="ms-Label ms-Label--on">Yes</span>
                                             </label>
                                         </div>
-                                        <div id="VisioLicenseSection" style="display:none">
-                                        <!--Visio Volume Key-->
-                                        <table>
-                                            <tr>
-                                                <td>
-                                                    <label class="ms-Label">Visio License Key</label>
-                                                </td>
-                                                <td>
-                                                    <i id="PACKAGEGUIDInfoIcon" class="ms-Icon ms-Icon--circleInfo ms-fontColor-blue" style="width: 30px;text-align: center;cursor:pointer;" onclick="toggleInfo('PACKAGEGUIDInfo', this)"></i>
-                                                </td>
-                                            </tr>
-                                        </table>
-                                        <div>
-                                            <input id="txtVisioLicenseKey" type="text" pattern="^.{5}-.{5}-.{5}-.{5}-.{5}$"
-                                                   class="ms-TextField-field" placeholder="XXXXX-XXXX-XXXX-XXXX-XXXXX"
-                                                   data-error="This must be a valid license key" maxlength="29">
-                                            <span id="VisioLicenseSignal" class="glyphicon form-control-feedback" aria-hidden="true"></span>
+                                        <div id="LicenseSection">
+                                            <div id="VisioLicenseSection" style="display:none">
+                                                <!--Visio Volume Key-->
+                                                <table>
+                                                    <tr>
+                                                        <td>
+                                                            <label class="ms-Label">Visio License Key</label>
+                                                        </td>
+                                                        <td>
+                                                            <i id="PACKAGEGUIDInfoIcon" class="ms-Icon ms-Icon--circleInfo ms-fontColor-blue" style="width: 30px;text-align: center;cursor:pointer;" onclick="toggleInfo('PACKAGEGUIDInfo', this)"></i>
+                                                        </td>
+                                                    </tr>
+                                                </table>
+                                                <div>
+                                                    <input id="txtVisioLicenseKey" type="text" pattern="^.{5}-.{5}-.{5}-.{5}-.{5}$"
+                                                           class="ms-TextField-field" placeholder="XXXXX-XXXX-XXXX-XXXX-XXXXX"
+                                                           data-error="This must be a valid license key" maxlength="26" onkeydown="validateActivationKey(this.id)">
+                                                    <span id="VisioLicenseSignal" class="glyphicon form-control-feedback" aria-hidden="true"></span>
+                                                </div>
+                                            </div>
+                                            <div id="ProjectLicenseSection" style="display:none">
+                                                <!--Project Volume Key-->
+                                                <table>
+                                                    <tr>
+                                                        <td>
+                                                            <label class="ms-Label">Project License Key</label>
+                                                        </td>
+                                                        <td>
+                                                            <i id="PACKAGEGUIDInfoIcon" class="ms-Icon ms-Icon--circleInfo ms-fontColor-blue" style="width: 30px;text-align: center;cursor:pointer;" onclick="toggleInfo('PACKAGEGUIDInfo', this)"></i>
+                                                        </td>
+                                                    </tr>
+                                                </table>
+                                                <div>
+                                                    <input id="txtProjectLicenseKey" type="text" pattern="^.{5}-.{5}-.{5}-.{5}-.{5}$"
+                                                           class="ms-TextField-field" placeholder="XXXXX-XXXX-XXXX-XXXX-XXXXX"
+                                                           data-error="This must be a valid license key" maxlength="26" onkeydown="validateActivationKey(this.id)">
+                                                    <span id="ProjectLicenseSignal" class="glyphicon form-control-feedback" aria-hidden="true"></span>
+                                                </div>
+                                            </div>
                                         </div>
-                                        </div>
-                                        <div id="ProjectLicenseSection" style="display:none">
-                                        <!--Project Volume Key-->
-                                        <table>
-                                            <tr>
-                                                <td>
-                                                    <label class="ms-Label">Project License Key</label>
-                                                </td>
-                                                <td>
-                                                    <i id="PACKAGEGUIDInfoIcon" class="ms-Icon ms-Icon--circleInfo ms-fontColor-blue" style="width: 30px;text-align: center;cursor:pointer;" onclick="toggleInfo('PACKAGEGUIDInfo', this)"></i>
-                                                </td>
-                                            </tr>
-                                        </table>
-                                        <div>
-                                            <input id="txtProjectLicenseKey" type="text" pattern="^.{5}-.{5}-.{5}-.{5}-.{5}$"
-                                                   class="ms-TextField-field" placeholder="XXXXX-XXXX-XXXX-XXXX-XXXXX"
-                                                   data-error="This must be a valid license key" maxlength="29">
-                                            <span id="ProjectLicenseSignal" class="glyphicon form-control-feedback" aria-hidden="true"></span>
-                                        </div>
-                                        </div>
+
                                         <div class="ms-Toggle">
                                             <table>
                                                 <tr>
